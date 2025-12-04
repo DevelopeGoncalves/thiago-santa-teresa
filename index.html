@@ -186,10 +186,21 @@
   function getFlatMenu(menu, insumos) {
       const insumosMap = insumos.reduce((map, i) => { map[i.id] = i; return map; }, {});
 
+      const imageMap = {
+          1: 'https://images.unsplash.com/photo-1549419130-cf2a9128f658?q=80&w=1500&h=150&fit=crop&crop=center', // Cerveja Gelada (Garrafa)
+          6: 'https://images.unsplash.com/photo-1598282361730-e74f85e49c71?q=80&w=1500&h=150&fit=crop&crop=center', // Torresmo Defumado
+          13: 'https://images.unsplash.com/photo-1634633282298-b807a976c669?q=80&w=1500&h=150&fit=crop&crop=center', // Feijoada Completa
+          16: 'https://images.unsplash.com/photo-1579227124976-5868e4c1945c?q=80&w=1500&h=150&fit=crop&crop=center', // Caipirinha
+          23: 'https://images.unsplash.com/photo-1606822557174-874b2f155c5c?q=80&w=1500&h=150&fit=crop&crop=center', // Moscow Mule
+          28.1: 'https://images.unsplash.com/photo-1550989932-5a213e41de3b?q=80&w=1500&h=150&fit=crop&crop=center', // Vinho Tinto (Taça)
+          29.1: 'https://images.unsplash.com/photo-1596791221199-c454790089e1?q=80&w=1500&h=150&fit=crop&crop=center', // Vinho Branco (Taça)
+          30.2: 'https://images.unsplash.com/photo-1552591630-10903347f70b?q=80&w=1500&h=150&fit=crop&crop=center', // Espumante (Garrafa)
+      };
+
       let flatItems = [];
       for (const category in menu) {
           menu[category].forEach(item => {
-              const defaultImageUrl = `https://via.placeholder.com/400x150?text=${encodeURIComponent(item.nome.split(' ')[0])}`;
+              const defaultImageUrl = `https://via.placeholder.com/400x150?text=${encodeURIComponent(item.emoji || item.nome.split(' ')[0])}`;
               const custo = calcularCusto(item, insumosMap);
               
               if (item.opcoes) {
@@ -203,7 +214,7 @@
                           estoque: 9999,
                           manutencao: item.manutencao || false,
                           baseId: item.id,
-                          imagemUrl: defaultImageUrl,
+                          imagemUrl: imageMap[parseFloat(opcao.id)] || defaultImageUrl,
                           custoProduto: custo, 
                           fichaTecnica: item.fichaTecnica 
                       });
@@ -217,7 +228,7 @@
                     categoria: item.categoria,
                     estoque: item.manutencao ? 0 : 9999,
                     manutencao: item.manutencao || false,
-                    imagemUrl: defaultImageUrl,
+                    imagemUrl: imageMap[item.id] || defaultImageUrl,
                     custoProduto: custo, 
                     fichaTecnica: item.fichaTecnica 
                   });
@@ -689,7 +700,7 @@
                      className={`p-4 rounded-2xl border cursor-pointer shadow-sm hover:shadow-lg transform hover:-translate-y-1 transition bg-white ${produto.manutencao ? 'opacity-50 cursor-not-allowed border-red-400' : 'border-gray-200'}`}>
                   
                   {/* EXIBIÇÃO DA IMAGEM */}
-                  {produto.imagemUrl ? (
+                  {produto.imagemUrl && !produto.imagemUrl.includes('placeholder') ? (
                       <img src={produto.imagemUrl} alt={produto.nome} className="w-full h-24 object-cover rounded-xl mb-3" />
                   ) : (
                       <div className="w-full h-24 bg-gray-100 rounded-xl mb-3 flex items-center justify-center text-3xl">{produto.emoji}</div>
@@ -705,9 +716,9 @@
                       <div className="text-terracota font-bold text-lg">{currency(produto.preco)}</div>
                       <div className="text-xs mt-2">
                         {produto.estoque <= 10 ? (
-                          <span className="inline-flex items-center gap-2 px-2 py-1 rounded-full text-red-700 bg-red-50 text-xs font-semibold">⚠️ {produto.estoque}</span>
+                          <span className="inline-flex items-center gap-2 px-2 py-1 rounded-full text-red-700 bg-red-50 text-xs font-semibold">⚠️ {produto.estoque.toFixed(0)}</span>
                         ) : (
-                          <span className="inline-flex items-center gap-2 px-2 py-1 rounded-full text-gray-700 bg-gray-50 text-xs">📦 {produto.estoque}</span>
+                          <span className="inline-flex items-center gap-2 px-2 py-1 rounded-full text-gray-700 bg-gray-50 text-xs">📦 {produto.estoque.toFixed(0)}</span>
                         )}
                     </div>
                     </div>
@@ -1054,21 +1065,22 @@
                   <th className="p-3 text-left">Categoria</th>
                   <th className="p-3 text-right">Preço</th>
                   <th className="p-3 text-right">Custo</th>
-                  <th className="p-3 text-right">Estoque</th>
-                  <th className="p-3 text-center">Ações</th>
                 </tr>
               </thead>
               <tbody>
                 {produtos.map(p=>(
                   <tr key={p.id} className="border-b hover:bg-gray-50">
                     <td className="p-3">
-                        {p.imagemUrl && <img src={p.imagemUrl} alt="" className="w-8 h-8 object-cover rounded-full inline mr-2" />}
+                        {p.imagemUrl && !p.imagemUrl.includes('placeholder') ? (
+                          <img src={p.imagemUrl} alt="" className="w-8 h-8 object-cover rounded-full inline mr-2" />
+                        ) : (
+                          <span className="text-lg mr-2 inline-block">{p.emoji}</span>
+                        )}
                         {p.nome}
                     </td>
                     <td className="p-3">{p.categoria}</td>
                     <td className="p-3 text-right">{currency(p.preco)}</td>
                     <td className="p-3 text-right text-green-600">{currency(p.custoProduto)}</td>
-                    <td className={`p-3 text-right ${p.estoque<=10 ? 'text-red-600 font-bold' : ''}`}>{p.estoque}</td>
                     <td className="p-3 text-center">
                       <div className="flex items-center justify-center gap-3">
                         <button onClick={()=>editar(p)} className="text-terracota hover:underline">Editar</button>
@@ -1261,7 +1273,7 @@
         const itemBase = tipo === 'insumo' ? insumos.find(i => i.id === itemId) : produtos.find(p => p.id === itemId);
         if (!itemBase) return alert('Item não encontrado.');
         
-        if (itemBase.estoque < qtd) return alert(`Estoque insuficiente: Apenas ${itemBase.estoque} disponível.`);
+        if (itemBase.estoque < qtd) return alert(`Estoque insuficiente: Apenas ${itemBase.estoque.toFixed(2)} disponível.`);
 
         const custoUnitario = tipo === 'insumo' ? itemBase.custoUnitario : itemBase.custoProduto || 0;
         
@@ -1351,7 +1363,7 @@
                     </td>
                     <td className="p-3 text-right text-red-600 font-bold">{currency(p.custoTotal)}</td>
                     <td className="p-3 text-xs italic">{p.justificativa}</td>
-                  </tr>
+                </tr>
                 ))}
               </tbody>
             </table>
@@ -1745,7 +1757,7 @@
       if(novaQuantidade <= 0) {
         removerDoCarrinho(id);
       } else if (novaQuantidade > produtoEmEstoque.estoque) {
-        alert(`Máximo: ${produtoEmEstoque.estoque}`);
+        alert(`Máximo: ${produtoEmEstoque.estoque.toFixed(0)}`);
       } else {
         setCarrinho(carrinho.map(i=> i.id===id ? {...i, quantidade:novaQuantidade} : i));
       }
@@ -1760,7 +1772,7 @@
       for (const item of carrinho) {
           const produtoEmEstoque = produtos.find(p => p.id === item.id);
           if (produtoEmEstoque.estoque < item.quantidade) {
-              alert(`Falha no estoque: Apenas ${produtoEmEstoque.estoque} de ${item.nome} disponíveis.`);
+              alert(`Falha no estoque: Apenas ${produtoEmEstoque.estoque.toFixed(0)} de ${item.nome} disponíveis.`);
               return;
           }
       }
@@ -1914,3 +1926,4 @@
 </body>
 
 </html>
+
