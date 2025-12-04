@@ -19,9 +19,6 @@
   <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   
-  <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-database-compat.js"></script>
-
   <script>
     tailwind.config = {
       theme: {
@@ -40,7 +37,10 @@
 
   <style>
     body { -webkit-font-smoothing:antialiased; -moz-osx-font-smoothing:grayscale; }
-    .sidebar-scroll { max-height: calc(100vh - 96px); overflow:auto; }
+    /* Ajuste para o novo layout de tela cheia */
+    .app-main-content { height: calc(100vh - 60px); overflow-y: auto; }
+    .sidebar-scroll { max-height: 100%; overflow:auto; } 
+    
     ::-webkit-scrollbar { width:10px; height:10px; }
     ::-webkit-scrollbar-thumb { background: linear-gradient(180deg, #e4593c, #a93131); border-radius:999px; }
     ::-webkit-scrollbar-track { background: transparent; }
@@ -68,49 +68,209 @@
       font-size: 12px; font-weight: bold; color: #ffffff;
       margin-top: 3px; letter-spacing: 1px;
     }
+    
+    /* Novo Estilo para imitar o OnChef */
+    .onchef-card {
+        padding: 1rem;
+        border-radius: 0.75rem;
+        color: white;
+        font-weight: bold;
+        display: flex;
+        flex-direction: column;
+        justify-content: space-between;
+        min-height: 120px;
+        box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+    }
+    .onchef-card-title { font-size: 1.5rem; }
+    .onchef-card-subtitle { font-size: 0.75rem; opacity: 0.8; }
+    
   </style>
 </head>
-<body class="bg-gradient-to-br from-cinzaClaroBg via-slate-50 to-cinzaClaroBg">
+<body class="bg-slate-50">
 
   <div id="root"></div>
 
   <script type="text/babel">
   const { useState, useEffect, useMemo, useRef } = React;
 
-  /**********************
-   * CONFIGURAÇÃO FIREBASE *
-   **********************/
-  const firebaseConfig = {
-  apiKey: "AIzaSyCB5k2sLKlSopQ5xes6e_1ctpXnHA2Pluo",
-  authDomain: "bar-do-gigante.firebaseapp.com",
-  databaseURL: "https://bar-do-gigante-default-rtdb.firebaseio.com",
-  projectId: "bar-do-gigante",
-  storageBucket: "bar-do-gigante.firebasestorage.app",
-  messagingSenderId: "818575087702",
-  appId: "1:818575087702:web:e488390c6f8ec6471b83f7"
-};
+  /*************************************************
+   * FUNÇÕES DE UTILIDADE E ARMAZENAMENTO (DESACOPLADAS)
+   *************************************************/
 
-  if (!firebase.apps.length) {
-    firebase.initializeApp(firebaseConfig);
+  // Funções de formatação e utilidades
+  function uid(){ return Date.now() + Math.floor(Math.random()*9999); }
+  function currency(v){ return 'R$ ' + Number(v||0).toFixed(2).replace('.', ','); }
+  
+  // Função para lidar com IDs numéricos (para compatibilidade)
+  function prepareForStorage(data) {
+    if (Array.isArray(data)) {
+        return data.map(item => {
+            if (typeof item.id === 'number' || typeof item.id === 'string' && item.id.includes('.')) {
+                // Converte IDs tipo 28.1 para '28-1' para o LocalStorage
+                return { ...item, id: String(item.id).replace('.', '-') };
+            }
+            return item;
+        });
+    }
+    return data;
   }
-  const db = firebase.database();
+  
+  function prepareFromStorage(data) {
+    if (Array.isArray(data)) {
+        return data.map(item => ({
+            // Converte IDs tipo '28-1' de volta para 28.1 para o React
+            ...item,
+            id: typeof item.id === 'string' && item.id.includes('-') ? parseFloat(item.id.replace('-', '.')) : item.id
+        }));
+    }
+    return data;
+  }
+  
+  // Funções LocalStorage
+  function storageGet(key, fallback=null){ 
+    try {
+      const data = localStorage.getItem(key);
+      if (data === null) return fallback;
+      
+      let parsedData = JSON.parse(data);
+      
+      if (key === 'produtos' && parsedData) {
+        parsedData = prepareFromStorage(parsedData);
+      }
+      
+      return parsedData;
+    } catch(e){ 
+      console.error('Erro ao ler localStorage:', e);
+      return fallback; 
+    }
+  }
 
+  function storageSet(key, value){ 
+    try {
+      let dataToSet = value;
+      if (key === 'produtos') {
+        dataToSet = prepareForStorage(value); 
+      }
+      localStorage.setItem(key, JSON.stringify(dataToSet));
+    } catch(e){
+      console.error('Erro ao salvar localStorage:', e);
+    }
+  }
+  
+  function getPedidosWebPendentes() {
+    try {
+      const data = localStorage.getItem('pedidos_web_pendentes');
+      const webPedidos = JSON.parse(data) || [];
+      return webPedidos.map(p => ({ ...p, tipo: 'Venda Web', status: 'Novo - WEB', id: p.id || uid() }));
+    } catch (e) {
+      console.error("Erro ao ler pedidos_web_pendentes do localStorage:", e);
+      return [];
+    }
+  }
+
+  // Função para calcular o custo total de um item
+  function calcularCusto(item, insumosMap) {
+      if (!item.fichaTecnica || item.fichaTecnica.length === 0) return 0;
+      
+      let custoTotal = 0;
+      item.fichaTecnica.forEach(insumoRef => {
+          const insumoData = insumosMap[insumoRef.idInsumo];
+          if (insumoData) {
+              custoTotal += insumoRef.quantidade * insumoData.custoUnitario;
+          }
+      });
+      return custoTotal;
+  }
+  
+  // Transforma o menu em lista plana e calcula o custo
+  function getFlatMenu(menu, insumos) {
+      const insumosMap = insumos.reduce((map, i) => { map[i.id] = i; return map; }, {});
+
+      let flatItems = [];
+      for (const category in menu) {
+          menu[category].forEach(item => {
+              const defaultImageUrl = `https://via.placeholder.com/400x150?text=${encodeURIComponent(item.nome.split(' ')[0])}`;
+              const custo = calcularCusto(item, insumosMap);
+              
+              if (item.opcoes) {
+                  item.opcoes.forEach(opcao => {
+                      flatItems.push({
+                          id: parseFloat(opcao.id),
+                          nome: `${item.nome} (${opcao.nomeOpcao})`,
+                          preco: opcao.preco,
+                          emoji: item.emoji,
+                          categoria: item.categoria,
+                          estoque: 9999,
+                          manutencao: item.manutencao || false,
+                          baseId: item.id,
+                          imagemUrl: defaultImageUrl,
+                          custoProduto: custo, 
+                          fichaTecnica: item.fichaTecnica 
+                      });
+                  });
+              } else {
+                  flatItems.push({ 
+                    id: item.id, 
+                    nome: item.nome, 
+                    preco: item.preco, 
+                    emoji: item.emoji, 
+                    categoria: item.categoria,
+                    estoque: item.manutencao ? 0 : 9999,
+                    manutencao: item.manutencao || false,
+                    imagemUrl: defaultImageUrl,
+                    custoProduto: custo, 
+                    fichaTecnica: item.fichaTecnica 
+                  });
+              }
+          });
+      }
+      return flatItems;
+  }
+  
   /**********************
-   * Produtos & Insumos Base (ATUALIZADO CONFORME MENU ONLINE) *
+   * LÓGICA DE CUSTO E ESTOQUE DE INSUMOS
+   **********************/
+  
+  function darBaixaInsumos(carrinho, produtos, insumos, setInsumos) {
+      const insumosMap = insumos.reduce((map, i) => { map[i.id] = {...i}; return map; }, {});
+      let custoTotalVenda = 0;
+
+      for (const item of carrinho) {
+          const produtoBase = produtos.find(p => p.id === item.id);
+          if (!produtoBase || !produtoBase.fichaTecnica) continue;
+
+          for (const insumoRef of produtoBase.fichaTecnica) {
+              const insumoData = insumosMap[insumoRef.idInsumo];
+              if (insumoData) {
+                  const quantidadeBaixa = insumoRef.quantidade * item.quantidade;
+                  insumoData.estoque -= quantidadeBaixa;
+                  
+                  custoTotalVenda += quantidadeBaixa * insumoData.custoUnitario;
+              }
+          }
+      }
+      
+      const novosInsumos = Object.values(insumosMap);
+      setInsumos(novosInsumos);
+      return custoTotalVenda;
+  }
+  
+  /**********************
+   * INSUMOS E PRODUTOS BASE (MOCK DATA)
    **********************/
    
-  // 1. INSUMOS (Matéria-prima) - Novo insumo 'gelo-un' adicionado
+  // 1. INSUMOS (Matéria-prima)
   const initialInsumos = [
-      { id: 'cachaca-500', nome: 'Cachaça (Garrafa)', unidade: 'ml', custoUnitario: 0.05, estoque: 10000, custoTotal: 500.00 }, // R$ 500/10000ml = R$ 0.05/ml
-      { id: 'limao-un', nome: 'Limão (Unidade)', unidade: 'un', custoUnitario: 0.50, estoque: 200 }, // R$ 0.50/un
-      { id: 'acucar-g', nome: 'Açúcar (Kg)', unidade: 'g', custoUnitario: 0.005, estoque: 5000 }, // R$ 5/Kg = R$ 0.005/g
-      { id: 'gelo-un', nome: 'Gelo (Dose)', unidade: 'un', custoUnitario: 0.05, estoque: 500 }, // Novo insumo Gelo
-      { id: 'cerveja-garrafa', nome: 'Cerveja (Garrafa 600ml)', unidade: 'un', custoUnitario: 5.50, estoque: 500 }, // R$ 5.50/un
-      { id: 'refrigerante-lata', nome: 'Refrigerante (Lata 350ml)', unidade: 'un', custoUnitario: 3.50, estoque: 300 }, // R$ 3.50/un
+      { id: 'cachaca-500', nome: 'Cachaça (Garrafa)', unidade: 'ml', custoUnitario: 0.05, estoque: 10000, custoTotal: 500.00 },
+      { id: 'limao-un', nome: 'Limão (Unidade)', unidade: 'un', custoUnitario: 0.50, estoque: 200 }, 
+      { id: 'acucar-g', nome: 'Açúcar (Kg)', unidade: 'g', custoUnitario: 0.005, estoque: 5000 }, 
+      { id: 'gelo-un', nome: 'Gelo (Dose)', unidade: 'un', custoUnitario: 0.05, estoque: 500 },
+      { id: 'cerveja-garrafa', nome: 'Cerveja (Garrafa 600ml)', unidade: 'un', custoUnitario: 5.50, estoque: 500 },
+      { id: 'refrigerante-lata', nome: 'Refrigerante (Lata 350ml)', unidade: 'un', custoUnitario: 3.50, estoque: 300 },
       { id: 'torresmo-porcao', nome: 'Torresmo (Porção P)', unidade: 'un', custoUnitario: 12.00, estoque: 100 },
   ];
    
-  // 2. PRODUTOS COM FICHA TÉCNICA (Menu) - Dados espelhados do menu online
+  // 2. PRODUTOS COM FICHA TÉCNICA (Menu)
   const cardapioData = {
       bebidas: [
           { id: 1, nome: 'Cerveja Gelada', preco: 8.00, emoji: '🍺', categoria: 'Bebidas', 
@@ -158,7 +318,7 @@
           { id: 26, nome: 'Pineapple Fresh', preco: 15.00, emoji: '🍍', alcool: false, categoria: 'Mocktails' },
           { id: 27, nome: 'Morango Especial', preco: 15.00, emoji: '🍓', alcool: false, categoria: 'Mocktails' },
       ],
-      vinhos: [ // Agrupados
+      vinhos: [ 
           { 
               id: 28, nome: 'Vinho Tinto', emoji: '🍷', categoria: 'Vinhos',
               opcoes: [
@@ -183,205 +343,12 @@
       ],
   };
 
-  // Funções de formatação e utilidades
-  function uid(){ return Date.now() + Math.floor(Math.random()*9999); }
-  function currency(v){ return 'R$ ' + Number(v||0).toFixed(2).replace('.', ','); }
-  
-  // Função para calcular o custo total de um item
-  function calcularCusto(item, insumosMap) {
-      if (!item.fichaTecnica || item.fichaTecnica.length === 0) return 0;
-      
-      let custoTotal = 0;
-      item.fichaTecnica.forEach(insumoRef => {
-          const insumoData = insumosMap[insumoRef.idInsumo];
-          if (insumoData) {
-              custoTotal += insumoRef.quantidade * insumoData.custoUnitario;
-          }
-      });
-      return custoTotal;
-  }
-  
-  // Transforma o menu em lista plana e calcula o custo
-  function getFlatMenu(menu, insumos) {
-      const insumosMap = insumos.reduce((map, i) => { map[i.id] = i; return map; }, {});
-
-      let flatItems = [];
-      for (const category in menu) {
-          menu[category].forEach(item => {
-              // Usa placeholder se nenhuma URL for definida (pois não há URL definida no PDV)
-              const defaultImageUrl = `https://via.placeholder.com/400x150?text=${encodeURIComponent(item.nome.split(' ')[0])}`;
-              const custo = calcularCusto(item, insumosMap); // Calcula o custo
-              
-              if (item.opcoes) {
-                  item.opcoes.forEach(opcao => {
-                      flatItems.push({
-                          id: parseFloat(opcao.id),
-                          nome: `${item.nome} (${opcao.nomeOpcao})`,
-                          preco: opcao.preco,
-                          emoji: item.emoji,
-                          categoria: item.categoria,
-                          estoque: 9999,
-                          manutencao: item.manutencao || false,
-                          baseId: item.id,
-                          imagemUrl: defaultImageUrl,
-                          custoProduto: custo, 
-                          fichaTecnica: item.fichaTecnica 
-                      });
-                  });
-              } else {
-                  flatItems.push({ 
-                    id: item.id, 
-                    nome: item.nome, 
-                    preco: item.preco, 
-                    emoji: item.emoji, 
-                    categoria: item.categoria,
-                    estoque: item.manutencao ? 0 : 9999,
-                    manutencao: item.manutencao || false,
-                    imagemUrl: defaultImageUrl,
-                    custoProduto: custo, 
-                    fichaTecnica: item.fichaTecnica 
-                  });
-              }
-          });
-      }
-      return flatItems;
-  }
-  
   const initialProdutosDefault = getFlatMenu(cardapioData, initialInsumos);
   
   const initialProdutos = initialProdutosDefault.map(p => ({
     ...p,
     estoque: p.manutencao ? 0 : p.estoque,
   }));
-  
-  // Funções para lidar com IDs de números no Firebase (necessário para vinhos)
-  function prepareForFirebase(data) {
-    if (Array.isArray(data)) {
-        return data.map(item => {
-            if (typeof item.id === 'number' || typeof item.id === 'string' && item.id.includes('.')) {
-                // Converte IDs tipo 28.1 para '28-1' para o Firebase
-                return { ...item, id: String(item.id).replace('.', '-') };
-            }
-            return item;
-        });
-    }
-    return data;
-  }
-  
-  function prepareFromFirebase(data) {
-    if (Array.isArray(data)) {
-        return data.map(item => ({
-            // Converte IDs tipo '28-1' de volta para 28.1 para o React
-            ...item,
-            id: typeof item.id === 'string' && item.id.includes('-') ? parseFloat(item.id.replace('-', '.')) : item.id
-        }));
-    }
-    return data;
-  }
-  
-  /**********************
-   * Utilitários Firebase & LocalStorage *
-   **********************/
-
-  // Funções Firebase (substituem localStorage)
-  async function storageGet(key, fallback=null){ 
-    try {
-      const snapshot = await db.ref(key).once('value');
-      let data = snapshot.exists() ? snapshot.val() : fallback;
-      if (key === 'produtos' && data) {
-        data = prepareFromFirebase(data);
-      } else if (key === 'insumos' && data) {
-        data = Object.values(data); // Transforma o objeto em array (Firebase retorna objetos)
-      } else if (key === 'perdas' && data) {
-        data = Object.values(data);
-      }
-      return data;
-    } catch(e){ 
-      console.error('Erro ao ler Firebase:', e);
-      return fallback; 
-    }
-  }
-
-  async function storageSet(key, value){ 
-    try {
-      let dataToSet = value;
-      if (key === 'produtos') {
-        dataToSet = prepareForFirebase(value);
-      } else if (key === 'insumos' || key === 'perdas') {
-         // Para Insumos e Perdas, usaremos um map com o 'id' como chave para facilitar a atualização.
-         dataToSet = value.reduce((obj, item) => {
-             obj[item.id] = item;
-             return obj;
-         }, {});
-      }
-      await db.ref(key).set(dataToSet);
-    } catch(e){
-      console.error('Erro ao salvar Firebase:', e);
-    }
-  }
-
-  function storageWatch(key, callback) {
-    db.ref(key).on('value', (snapshot) => {
-      if (snapshot.exists()) {
-        let data = snapshot.val();
-        if (key === 'produtos') {
-          data = prepareFromFirebase(data);
-        } else if (key === 'insumos' || key === 'perdas') {
-          data = Object.values(data);
-        }
-        callback(data);
-      }
-    });
-  }
-  
-  function getPedidosWebPendentes() {
-    try {
-      const data = localStorage.getItem('pedidos_web_pendentes');
-      return JSON.parse(data) || [];
-    } catch (e) {
-      console.error("Erro ao ler pedidos_web_pendentes do localStorage:", e);
-      return [];
-    }
-  }
-
-  function clearPedidosWebPendentes() {
-    localStorage.removeItem('pedidos_web_pendentes');
-  }
-  
-  /**********************
-   * LÓGICA DE CUSTO E ESTOQUE DE INSUMOS * **********************/
-  
-  function getCustoUnitarioItem(produto, insumosMap) {
-      return calcularCusto(produto, insumosMap);
-  }
-
-  function darBaixaInsumos(carrinho, produtos, insumos, setInsumos) {
-      // Cria um mapa mutável dos insumos para dar baixa
-      const insumosMap = insumos.reduce((map, i) => { map[i.id] = {...i}; return map; }, {});
-      let custoTotalVenda = 0;
-
-      for (const item of carrinho) {
-          // Encontra a ficha técnica no produto atualizado
-          const produtoBase = produtos.find(p => p.id === item.id);
-          if (!produtoBase || !produtoBase.fichaTecnica) continue;
-
-          for (const insumoRef of produtoBase.fichaTecnica) {
-              const insumoData = insumosMap[insumoRef.idInsumo];
-              if (insumoData) {
-                  // Quantidade a ser baixada (Qtd na Ficha * Qtd de Itens vendidos)
-                  const quantidadeBaixa = insumoRef.quantidade * item.quantidade;
-                  insumoData.estoque -= quantidadeBaixa;
-                  
-                  // Calcula o custo
-                  custoTotalVenda += quantidadeBaixa * insumoData.custoUnitario;
-              }
-          }
-      }
-      
-      const novosInsumos = Object.values(insumosMap);
-      setInsumos(novosInsumos);
-      return custoTotalVenda;
-  }
   
   /**********
    * Login *
@@ -455,59 +422,254 @@
   }
 
   /****************
-   * Header, Side *
+   * Header, Side
    ****************/
   function Header({user, onLogout}){
     return (
-      <header className="bg-white shadow sticky top-0 z-30">
-        <div className="max-w-7xl mx-auto px-4 py-3 flex items-center justify-between">
-          <div className="flex items-center gap-4">
-            <div className="text-3xl text-terracota">🍷</div>
-            <div>
-              <div className="text-lg font-bold bg-clip-text text-transparent bg-gradient-to-r from-terracota to-redBrown">Thiago Santa Teresa</div>
-              <div className="text-xs text-gray-500 hidden sm:block">Sistema PDV (Firebase)</div>
-            </div>
-          </div>
+      <header className="bg-white shadow sticky top-0 z-30 h-16 flex items-center justify-between px-6 border-b">
+        <div className="flex items-center gap-4">
+            <h1 className="text-xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-terracota to-redBrown">Thiago Santa Teresa PDV</h1>
+            <div className="text-xs text-gray-500 hidden sm:block">(Simulação LocalStorage)</div>
+        </div>
 
-          <div className="flex items-center gap-4">
-            <div className="flex items-center gap-2 bg-gray-50 px-3 py-1 rounded-full shadow-sm">
-              <div className="text-sm text-gray-700">👤 {user?.username}</div>
+        <div className="flex items-center gap-4 text-sm text-gray-600">
+            <div className="flex items-center gap-2">
+                <span className="text-green-500">🟢</span> Caixa Aberto (Simulação)
             </div>
-            <button onClick={onLogout} className="px-3 py-1 rounded-lg border hover:bg-terracota hover:text-white transition">Sair</button>
-          </div>
+            <div className="hidden sm:block">⏱️ 16:15</div> 
+            <div className="hidden sm:block">📅 03/12/2025</div>
+            <div className="hidden sm:block">Boa tarde</div> 
         </div>
       </header>
     );
   }
 
-  function Sidebar({selected, setSelected, totalPedidosWeb}){
+  function Sidebar({selected, setSelected, totalPedidosWeb, user, onLogout}){
     const itens = [
+      { key:'dashboard', label:'🏠 Dashboard' },
       { key:'pdv', label:'🛒 PDV' },
-      { key:'pedidos_web', label: `🌐 Pedidos Web ${totalPedidosWeb > 0 ? `(${totalPedidosWeb})` : ''}` }, 
-      { key:'pedidos', label:'🔔 Pedidos (Cozinha)' },
+      { key:'pedidos_web', label: `🌐 Gestão de Pedidos ${totalPedidosWeb > 0 ? `(${totalPedidosWeb} novos)` : ''}` }, 
       { key:'produtos', label:'📦 Produtos (Venda)' },
-      { key:'insumos', label:'🧪 Insumos/Estoque' }, // Modificado
-      { key:'custo_insumos', label:'📝 Relatório de Insumos' }, // Novo!
+      { key:'insumos', label:'🧪 Insumos/Estoque' },
+      { key:'custo_insumos', label:'📝 Relatório de Insumos' },
       { key:'perdas', label:'⚠️ Registro de Perdas' },
       { key:'relatorios', label:'📊 Relatórios' },
       { key:'avancado', label:'📈 Relatório Avançado' }
     ];
+    
     return (
-      <aside className="w-64 bg-white border-r hidden md:block">
-        <div className="p-4 sidebar-scroll">
+      <aside className="w-64 bg-dark border-r border-cinzaEscuro hidden md:flex flex-col flex-shrink-0">
+        <div className="p-4 flex flex-col items-center justify-center border-b border-cinzaEscuro">
+            <div className="text-xl font-bold text-terracota">THIAGO</div>
+            <div className="text-sm text-gray-400">SANTA TERESA PDV</div>
+        </div>
+        
+        <div className="p-2 sidebar-scroll flex-1">
           {itens.map(i=>(
             <button key={i.key} onClick={()=>setSelected(i.key)}
-              className={`flex items-center gap-3 w-full text-left px-4 py-4 rounded-xl my-1 text-lg font-medium transition ${selected===i.key ? 'bg-gradient-to-r from-terracota to-redBrown text-white shadow-lg' : 'hover:bg-red-50'}`}>
+              className={`flex items-center gap-3 w-full text-left px-4 py-3 rounded-lg my-1 text-md font-medium transition ${selected===i.key ? 'bg-terracota text-white shadow-lg' : 'text-gray-300 hover:bg-cinzaEscuro hover:text-white'}`}>
               <span>{i.label}</span>
             </button>
           ))}
         </div>
+        
+        <div className="p-4 border-t border-cinzaEscuro text-sm text-gray-400">
+            <div className="flex items-center justify-between mb-2">
+                <div>👤 Logado como: <b className="text-terracota">{user?.username}</b></div>
+            </div>
+            <button onClick={onLogout} className="w-full py-1 rounded-lg border border-redBrown text-redBrown hover:bg-redBrown hover:text-white transition">Sair</button>
+        </div>
       </aside>
     );
   }
+  
+  /*********************
+   * Dashboard View
+   *********************/
+  function DashboardView({ vendas, perdas, produtos }) {
+      const areaRef = useRef(null);
+      const pieRef = useRef(null);
+      
+      const salesData = useMemo(() => {
+          let totalSales = 0;
+          let totalCosts = 0;
+          let totalLosses = 0;
+          let totalTickets = vendas.length;
+          
+          vendas.forEach(v => {
+              totalSales += v.total;
+              totalCosts += v.custoVenda || 0;
+          });
+          
+          perdas.forEach(p => {
+              totalLosses += p.custoTotal;
+          });
+          
+          const totalProfit = totalSales - totalCosts - totalLosses;
+          const averageTicket = totalTickets > 0 ? totalSales / totalTickets : 0;
+          const averageProfit = totalTickets > 0 ? totalProfit / totalTickets : 0;
+          
+          return { totalSales, totalCosts, totalLosses, totalTickets, totalProfit, averageTicket, averageProfit };
+      }, [vendas, perdas]);
+
+      const dailySalesChartData = useMemo(() => {
+        const map = {};
+        vendas.forEach(v => {
+          const day = v.data.split('T')[0];
+          map[day] = (map[day] || 0) + v.total;
+        });
+        const arr = Object.entries(map).map(([d, t]) => ({ date: d, receita: t }));
+        arr.sort((a, b) => a.date.localeCompare(b.date));
+        return arr;
+      }, [vendas]);
+      
+      const categorySalesChartData = useMemo(() => {
+          const map = {};
+          vendas.forEach(v => {
+              v.itens.forEach(item => {
+                  const product = produtos.find(p => p.id === item.id);
+                  if (product) {
+                      map[product.categoria] = (map[product.categoria] || 0) + item.preco * item.quantidade;
+                  }
+              });
+          });
+          return Object.entries(map).map(([categoria, total]) => ({ categoria, total }));
+      }, [vendas, produtos]);
+
+      // Gráfico de Barras - Vendas Diárias (Imitando o OnChef)
+      useEffect(() => {
+          if (areaRef.current && areaRef.current._chart) { try { areaRef.current._chart.destroy(); } catch { } }
+          
+          if (areaRef.current && dailySalesChartData.length > 0) {
+              const ctx = areaRef.current.getContext('2d');
+              const labels = dailySalesChartData.map(s => new Date(s.date).toLocaleDateString('pt-BR', { day: 'numeric', month: 'short' }));
+              const dataReceita = dailySalesChartData.map(s => s.receita);
+              
+              const backgroundColors = dataReceita.map(r => '#e4593c'); 
+              const borderColors = dataReceita.map(r => '#a93131');
+              
+              areaRef.current._chart = new Chart(ctx, {
+                  type: 'bar',
+                  data: { 
+                      labels, 
+                      datasets: [{ 
+                          label: 'Receita (R$)', 
+                          data: dataReceita, 
+                          backgroundColor: backgroundColors, 
+                          borderColor: borderColors,
+                          borderWidth: 1,
+                          barThickness: 15,
+                      }] 
+                  },
+                  options: { 
+                      responsive: true, 
+                      maintainAspectRatio: false,
+                      plugins: { legend: { display: false } },
+                      scales: {
+                          x: { grid: { display: false } },
+                          y: { beginAtZero: true }
+                      }
+                  }
+              });
+          }
+      }, [dailySalesChartData]);
+
+      // Gráfico de Pizza - Vendas por Categoria
+      useEffect(() => {
+          if (pieRef.current && pieRef.current._chart) { try { pieRef.current._chart.destroy(); } catch { } }
+
+          if (pieRef.current && categorySalesChartData.length > 0) {
+              const ctx = pieRef.current.getContext('2d');
+              const labels = categorySalesChartData.map(d => d.categoria);
+              const data = categorySalesChartData.map(d => d.total);
+              const backgroundColors = [
+                '#e4593c', '#a93131', '#fcd34d', '#10b981', '#3b82f6', '#f97316'
+              ];
+
+              pieRef.current._chart = new Chart(ctx, {
+                  type: 'doughnut',
+                  data: { 
+                      labels, 
+                      datasets: [{ 
+                          data, 
+                          backgroundColor: backgroundColors, 
+                          borderColor: '#fff',
+                          borderWidth: 2,
+                      }] 
+                  },
+                  options: { 
+                      responsive: true, 
+                      maintainAspectRatio: false,
+                      plugins: { legend: { position: 'bottom' } }
+                  }
+              });
+          }
+      }, [categorySalesChartData]);
+
+      return (
+          <div className="p-6 bg-slate-50 min-h-full">
+              <div className="flex justify-between items-center border-b pb-4 mb-6">
+                  <h2 className="text-2xl font-bold text-gray-800">Painel de Vendas - {new Date().toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' })}</h2>
+              </div>
+              
+              {/* Caixas de Resumo */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
+                  
+                  {/* Total de Vendas (Verde) */}
+                  <div className="onchef-card bg-green-600">
+                      <div className="onchef-card-subtitle">Total de Vendas no Período</div>
+                      <div className="onchef-card-title">{currency(salesData.totalSales)}</div>
+                      <div className="text-right text-xs opacity-90">Total de {salesData.totalTickets} Vendas</div>
+                  </div>
+                  
+                  {/* Custo Total (Vermelho Escuro - Lucro Bruto) */}
+                  <div className="onchef-card bg-red-600">
+                      <div className="onchef-card-subtitle">Custo Total dos Produtos (CMV)</div>
+                      <div className="onchef-card-title">{currency(salesData.totalCosts)}</div>
+                      <div className="text-right text-xs opacity-90">Perdas: {currency(salesData.totalLosses)}</div>
+                  </div>
+                  
+                  {/* Lucro Bruto (Terracota) */}
+                  <div className="onchef-card bg-terracota">
+                      <div className="onchef-card-subtitle">Lucro Bruto (Vendas - Custo - Perdas)</div>
+                      <div className="onchef-card-title">{currency(salesData.totalProfit)}</div>
+                      <div className="text-right text-xs opacity-90">Margem: {(salesData.totalSales > 0 ? (salesData.totalProfit / salesData.totalSales) * 100 : 0).toFixed(1)}%</div>
+                  </div>
+                  
+                  {/* Ticket Médio (Azul) */}
+                  <div className="onchef-card bg-blue-600">
+                      <div className="onchef-card-subtitle">Ticket Médio (Valor por Venda)</div>
+                      <div className="onchef-card-title">{currency(salesData.averageTicket)}</div>
+                      <div className="text-right text-xs opacity-90">Lucro Médio: {currency(salesData.averageProfit)}</div>
+                  </div>
+              </div>
+              
+              {/* Gráficos */}
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                  
+                  {/* Gráfico de Barras Diárias (Esquerda) */}
+                  <div className="bg-white p-4 rounded-2xl shadow-lg border">
+                      <h3 className="font-bold text-lg mb-4 text-gray-700">Vendas por Dia</h3>
+                      <div style={{ height: 350 }}>
+                          {dailySalesChartData.length > 0 ? <canvas ref={areaRef}></canvas> : <div className="text-gray-500 text-center py-10">Sem dados</div>}
+                      </div>
+                  </div>
+                  
+                  {/* Gráfico de Pizza (Direita) */}
+                  <div className="bg-white p-4 rounded-2xl shadow-lg border">
+                      <h3 className="font-bold text-lg mb-4 text-gray-700">Vendas por Categoria (Receita)</h3>
+                      <div style={{ height: 350 }}>
+                          {categorySalesChartData.length > 0 ? <canvas ref={pieRef}></canvas> : <div className="text-gray-500 text-center py-10">Sem dados</div>}
+                      </div>
+                  </div>
+              </div>
+              
+          </div>
+      );
+  }
 
   /*********************
-   * PDV *
+   * PDV 
    *********************/
   function PDVView({produtos, adicionarAoCarrinho, busca, setBusca, carrinho, alterarQuantidade, removerDoCarrinho, finalizarVenda, totalCarrinho}){
     const produtosFiltrados = produtos.filter(p => p.nome.toLowerCase().includes(busca.toLowerCase()) || p.categoria.toLowerCase().includes(busca.toLowerCase()));
@@ -605,45 +767,117 @@
     );
   }
   
-  // Removida ComandasView e lógicas associadas
- 
-  function PedidosView({ pedidos, setPedidos, finalizarPedidoEGerarVenda }) {
+  // NOVO/REESTRUTURADO: PedidosWeb (Central de Cozinha)
+  function PedidosWeb({ pedidos, setPedidos, pedidosPendentesWeb, setPedidosPendentesWeb, finalizarPedidoEGerarVenda }) {
+    
+    function aceitarPedido(pedido) {
+        if (!confirm(`Aceitar pedido de ${pedido.nomeCliente} e enviá-lo para preparo?`)) return;
+
+        const novoPedidoCozinha = {
+            id: uid(),
+            data: new Date().toISOString(),
+            nomeCliente: pedido.nomeCliente,
+            itens: pedido.itens,
+            total: pedido.total,
+            status: 'Pendente',
+            tipo: 'Venda Web',
+            itens: pedido.itens.map(item => {
+                const produtoBase = initialProdutos.find(p => p.id === item.id || String(p.id).replace('.', '-') === String(item.id));
+                return { ...item, custoUnitario: produtoBase?.custoProduto || 0 };
+            })
+        };
+
+        setPedidos(prevPedidos => [...prevPedidos, novoPedidoCozinha]);
+
+        const novosWeb = pedidosPendentesWeb.filter(p => p.id !== pedido.id);
+        setPedidosPendentesWeb(novosWeb);
+        
+        localStorage.setItem('pedidos_web_pendentes', JSON.stringify(novosWeb.map(p => ({
+             id: p.id,
+             data: p.data,
+             nomeCliente: p.nomeCliente,
+             itens: p.itens,
+             total: p.total
+        }))));
+    }
+    
+    function rejeitarPedido(pedido) {
+        if (!confirm(`Rejeitar pedido de ${pedido.nomeCliente}? Isso irá removê-lo.`)) return;
+        
+        const novosWeb = pedidosPendentesWeb.filter(p => p.id !== pedido.id);
+        setPedidosPendentesWeb(novosWeb);
+        localStorage.setItem('pedidos_web_pendentes', JSON.stringify(novosWeb.map(p => ({
+             id: p.id,
+             data: p.data,
+             nomeCliente: p.nomeCliente,
+             itens: p.itens,
+             total: p.total
+        }))));
+    }
+    
     function alterarStatus(id, novoStatus) {
       const novosPedidos = pedidos.map(p => p.id === id ? { ...p, status: novoStatus } : p);
       setPedidos(novosPedidos);
     }
     
-    // Pedidos agora só contém Vendas Diretas e Web (sem Consumo Pré-pago)
     const pedidosPendentes = pedidos.filter(p => p.status === 'Pendente');
     const pedidosEmPreparo = pedidos.filter(p => p.status === 'Em Preparo');
-    
     const pedidosFinalizados = pedidos.filter(p => p.status === 'Vendido');
 
     return (
       <div className="space-y-6">
         <h2 className="text-3xl font-extrabold text-gray-800 border-b pb-2 flex items-center gap-3">
-          <span className="text-4xl text-terracota">🔔</span> Gestão de Pedidos (Cozinha)
-          <span className="text-xs text-gray-500">(PDV e Web)</span>
+          <span className="text-4xl text-terracota">🌐</span> Central de Pedidos (Cozinha & Web)
         </h2>
         
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          {/* COLUNA 1: NOVOS PEDIDOS (WEB E PDV) */}
           <div className="p-4 rounded-2xl shadow border border-red-200 bg-red-50">
-            <h3 className="font-bold text-xl mb-4 text-red-700">NOVOS - {pedidosPendentes.length}</h3>
+            <h3 className="font-bold text-xl mb-4 text-red-700">NOVOS ({pedidosPendentesWeb.length + pedidosPendentes.length})</h3>
             <div className="space-y-4 max-h-[70vh] overflow-y-auto">
-              {pedidosPendentes.map(p => (
-                <div key={p.id} className="p-3 bg-white rounded-xl shadow-md border border-red-300">
-                  <div className="font-bold text-lg text-red-600">{p.nomeCliente}</div>
-                  <div className="text-xs text-gray-500 mb-2">Origem: {p.tipo}</div>
+              
+              {/* Pedidos da WEB (Em Fila Local, ainda não aceitos) */}
+              {pedidosPendentesWeb.map(p => (
+                <div key={p.id} className="p-3 bg-white rounded-xl shadow-md border-2 border-green-500">
+                  <div className="font-bold text-lg text-green-700 flex justify-between items-center">
+                      <span>{p.nomeCliente}</span>
+                      <span className="text-sm bg-green-100 text-green-700 px-2 py-0.5 rounded-full">WEB</span>
+                  </div>
+                  <div className="text-xs text-gray-500 mb-2">Recebido em: {new Date(p.data).toLocaleTimeString()}</div>
                   <ul className="list-disc list-inside text-sm mb-3 ml-3">
                     {p.itens.map(it => <li key={it.id}>{it.quantidade}x {it.nome}</li>)}
                   </ul>
-                  <button onClick={() => alterarStatus(p.id, 'Em Preparo')} className="w-full mt-3 py-2 bg-terracota text-white rounded-lg hover:bg-redBrown">Iniciar</button>
+                  <div className="font-bold text-lg text-terracota">Total: {currency(p.total)}</div>
+
+                  <div className="mt-3 flex gap-2">
+                    <button onClick={() => aceitarPedido(p)} className="flex-1 py-2 bg-green-500 text-white rounded-lg hover:bg-green-600">✅ Aceitar</button>
+                    <button onClick={() => rejeitarPedido(p)} className="py-2 px-4 bg-red-500 text-white rounded-lg hover:bg-red-600">✕</button>
+                  </div>
                 </div>
               ))}
-              {pedidosPendentes.length === 0 && <div className="text-gray-500 text-center py-6">Nenhum novo</div>}
+              
+              {/* Pedidos Pendentes (Aceitos da Web ou Venda Direta) */}
+              {pedidosPendentes.map(p => (
+                <div key={p.id} className="p-3 bg-white rounded-xl shadow-md border border-red-300">
+                  <div className="font-bold text-lg text-red-600 flex justify-between items-center">
+                    <span>{p.nomeCliente}</span>
+                    <span className="text-sm bg-red-100 text-red-700 px-2 py-0.5 rounded-full">{p.tipo === 'Venda Direta' ? 'PDV' : 'WEB ACEITO'}</span>
+                  </div>
+                  <div className="text-xs text-gray-500 mb-2">Data: {new Date(p.data).toLocaleTimeString()}</div>
+                  <ul className="list-disc list-inside text-sm mb-3 ml-3">
+                    {p.itens.map(it => <li key={it.id}>{it.quantidade}x {it.nome}</li>)}
+                  </ul>
+                  <div className="font-bold text-lg">{currency(p.total)}</div>
+
+                  <button onClick={() => alterarStatus(p.id, 'Em Preparo')} className="w-full mt-3 py-2 bg-terracota text-white rounded-lg hover:bg-redBrown">Iniciar Preparo</button>
+                </div>
+              ))}
+              
+              {pedidosPendentesWeb.length === 0 && pedidosPendentes.length === 0 && <div className="text-gray-500 text-center py-6">Nenhum novo pedido</div>}
             </div>
           </div>
 
+          {/* COLUNA 2: EM PREPARO */}
           <div className="p-4 rounded-2xl shadow border border-yellow-200 bg-yellow-50">
             <h3 className="font-bold text-xl mb-4 text-yellow-700">EM PREPARO - {pedidosEmPreparo.length}</h3>
             <div className="space-y-4 max-h-[70vh] overflow-y-auto">
@@ -663,7 +897,7 @@
                       onClick={() => finalizarPedidoEGerarVenda(p)} 
                       className="w-full mt-3 py-2 bg-green-500 text-white rounded-lg hover:bg-green-600"
                     >
-                      Finalizar Venda
+                      ✅ Finalizar e Vender
                     </button>
                   </div>
                 );
@@ -672,95 +906,20 @@
             </div>
           </div>
           
+          {/* COLUNA 3: FINALIZADOS */}
           <div className="p-4 rounded-2xl shadow border border-green-200 bg-green-50">
-            <h3 className="font-bold text-xl mb-4 text-green-700">FINALIZADOS - {pedidosFinalizados.length}</h3>
+            <h3 className="font-bold text-xl mb-4 text-green-700">FINALIZADOS (Últimos 5)</h3>
             <div className="space-y-4 max-h-[70vh] overflow-y-auto">
-              {pedidosFinalizados.slice(0, 5).map(p => ( 
+              {pedidosFinalizados.sort((a,b) => new Date(b.data) - new Date(a.data)).slice(0, 5).map(p => ( 
                 <div key={p.id} className="p-3 bg-white rounded-xl shadow-md border border-green-300">
                   <div className="font-bold text-lg text-green-600">{p.nomeCliente}</div>
+                  <div className="text-xs text-gray-500">{new Date(p.data).toLocaleTimeString()}</div>
                   <div className="text-right font-bold text-lg">{currency(p.total)}</div>
                 </div>
               ))}
+              {pedidosFinalizados.length === 0 && <div className="text-gray-500 text-center py-6">Nenhum finalizado</div>}
             </div>
           </div>
-        </div>
-      </div>
-    );
-  }
-  
-  function PedidosWeb({ pedidosPendentesWeb, setPedidosPendentesWeb, setPedidos }) {
-    function aceitarPedido(pedido) {
-        if (!confirm(`Aceitar pedido de ${pedido.nomeCliente}?`)) return;
-
-        const novoPedidoCozinha = {
-            id: uid(),
-            data: new Date().toISOString(),
-            nomeCliente: pedido.nomeCliente,
-            itens: pedido.itens,
-            total: pedido.total,
-            status: 'Pendente',
-            tipo: 'Venda Web'
-        };
-
-        setPedidos(prevPedidos => [...prevPedidos, novoPedidoCozinha]);
-
-        const novosWeb = pedidosPendentesWeb.filter(p => p.id !== pedido.id);
-        setPedidosPendentesWeb(novosWeb);
-        localStorage.setItem('pedidos_web_pendentes', JSON.stringify(novosWeb));
-    }
-    
-    function rejeitarPedido(pedido) {
-        if (!confirm(`Rejeitar pedido de ${pedido.nomeCliente}? Isso irá removê-lo.`)) return;
-        
-        const novosWeb = pedidosPendentesWeb.filter(p => p.id !== pedido.id);
-        setPedidosPendentesWeb(novosWeb);
-        localStorage.setItem('pedidos_web_pendentes', JSON.stringify(novosWeb));
-    }
-    
-    return (
-      <div className="space-y-6">
-        <h2 className="text-3xl font-extrabold text-gray-800 border-b pb-2 flex items-center gap-3">
-          <span className="text-4xl text-terracota">🌐</span> Pedidos Recebidos da Web (Fila Local)
-        </h2>
-        
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {pedidosPendentesWeb.map(p => (
-            <div key={p.id} className="p-4 rounded-2xl shadow-lg border-2 border-green-500 bg-green-50">
-              <div className="flex justify-between items-center mb-2">
-                <h3 className="font-bold text-xl text-green-700">{p.nomeCliente}</h3>
-                <span className="text-sm bg-green-200 text-green-800 px-2 py-1 rounded-full">NOVO</span>
-              </div>
-              <p className="text-xs text-gray-500">Recebido em: {new Date(p.data).toLocaleTimeString()}</p>
-              
-              <div className="border-t pt-2 mt-2">
-                <h4 className="font-bold text-lg mb-2 text-terracota">Itens:</h4>
-                <ul className="list-disc list-inside text-sm mb-3 ml-3">
-                  {p.itens.map(it => <li key={it.id}>{it.quantidade}x {it.nome}</li>)}
-                </ul>
-              </div>
-              
-              <div className="font-bold text-xl text-terracota mt-3">Total: {currency(p.total)}</div>
-              
-              <div className="mt-4 flex gap-3">
-                <button 
-                  onClick={() => aceitarPedido(p)}
-                  className="flex-1 py-2 bg-green-500 text-white rounded-lg hover:bg-green-600 transition font-semibold"
-                >
-                  ✅ Aceitar e Enviar Cozinha
-                </button>
-                <button 
-                  onClick={() => rejeitarPedido(p)}
-                  className="py-2 px-4 bg-red-500 text-white rounded-lg hover:bg-red-600 transition font-semibold"
-                >
-                  ✕
-                </button>
-              </div>
-            </div>
-          ))}
-
-          {pedidosPendentesWeb.length === 0 && (
-            <div className="md:col-span-3 text-center text-gray-500 p-8 border rounded-xl bg-gray-50">Nenhum pedido web pendente.</div>
-          )}
         </div>
       </div>
     );
@@ -770,7 +929,6 @@
     const [form, setForm] = useState({ id:null, nome:'', preco:'', estoque:'', categoria:'', imagemUrl:'', fichaTecnica: [] });
     const [insumoForm, setInsumoForm] = useState({ idInsumo: '', quantidade: '' });
     
-    // Mapeia insumos para fácil acesso no formulário
     const insumosMap = insumos.reduce((map, i) => { map[i.id] = i; return map; }, {});
 
     useEffect(() => {
@@ -795,7 +953,6 @@
         id: novoId 
       };
       
-      // Recalcula o custo do produto com base na ficha técnica atualizada
       novo.custoProduto = calcularCusto(novo, insumosMap);
 
       let novos;
@@ -1027,7 +1184,6 @@
   function CustoInsumosView({ produtos, insumos }) {
       const insumosMap = insumos.reduce((map, i) => { map[i.id] = i; return map; }, {});
       
-      // Filtra apenas produtos que possuem ficha técnica
       const produtosComFicha = produtos.filter(p => p.fichaTecnica && p.fichaTecnica.length > 0);
 
       return (
@@ -1083,16 +1239,15 @@
 
   // NOVO: View para registrar perdas
   function PerdasView({ produtos, insumos, salvarPerdas, salvarInsumos, salvarProdutos }){
-    const [tipo, setTipo] = useState('insumo'); // 'insumo' ou 'produto'
+    const [tipo, setTipo] = useState('insumo');
     const [itemId, setItemId] = useState('');
     const [quantidade, setQuantidade] = useState('');
     const [justificativa, setJustificativa] = useState('');
     const [historico, setHistorico] = useState([]);
     
     useEffect(() => {
-        storageGet('perdas', []).then(setHistorico);
-        storageWatch('perdas', setHistorico);
-    }, []);
+        setHistorico(storageGet('perdas', []));
+    }, []); 
 
     const listaItens = tipo === 'insumo' ? insumos : produtos;
     const itemSelecionado = listaItens.find(i => i.id === itemId);
@@ -1123,25 +1278,22 @@
             justificativa: justificativa,
         };
 
-        // 1. Dar baixa no estoque e registrar a perda no histórico
         
         if (tipo === 'insumo') {
-            // Se for insumo, baixa apenas o insumo
             salvarInsumos(insumos.map(i => i.id === itemId ? { ...i, estoque: i.estoque - qtd } : i));
         } else {
-            // Se for produto, baixa o estoque do produto...
             const novosProdutos = produtos.map(p => p.id === itemId ? { ...p, estoque: p.estoque - qtd } : p);
             salvarProdutos(novosProdutos);
             
-            // ...e também os insumos utilizados para "fazer" esse produto, simulando a perda da receita
             if (itemBase.fichaTecnica) {
-                 const carrinhoPerda = [{ id: itemId, quantidade: qtd, nome: itemBase.nome, preco: 0, custoProduto: itemBase.custoProduto || 0 }]; // Mock
+                 const carrinhoPerda = [{ id: itemId, quantidade: qtd, nome: itemBase.nome, preco: 0, custoProduto: itemBase.custoProduto || 0 }];
                  darBaixaInsumos(carrinhoPerda, produtos, insumos, salvarInsumos);
             }
         }
 
-        // 2. Registrar a perda
-        salvarPerdas([...historico, novaPerda]);
+        const novoHistorico = [...historico, novaPerda];
+        salvarPerdas(novoHistorico);
+        setHistorico(novoHistorico);
 
         alert(`Perda de ${qtd}x ${itemBase.nome} registrada! Custo: ${currency(novaPerda.custoTotal)}`);
         setQuantidade('');
@@ -1385,7 +1537,7 @@
         });
       });
 
-      const topProdutos = Object.values(productsSold).sort((a, b) => (b.total - b.custo) - (a.total - a.custo)).slice(0, 6); // Top por Lucro
+      const topProdutos = Object.values(productsSold).sort((a, b) => (b.total - b.custo) - (a.total - a.custo)).slice(0, 6);
 
       return { totalVendas, receitaTotal, custoTotal, lucroTotal, ticketMedio, margemLucro, topProdutos };
     }, [vendasFiltradas]);
@@ -1472,67 +1624,61 @@
     const [perdas, setPerdas] = useState([]); 
     const [vendas, setVendas] = useState([]);
     const [pedidos, setPedidos] = useState([]);
-    const [pedidosPendentesWeb, setPedidosPendentesWeb] = useState([]); 
+    const [pedidosPendentesWeb, setPedidosPendentesWeb] = useState([]);
     
     const [carrinho, setCarrinho] = useState([]);
     const [busca, setBusca] = useState('');
-    const [selected, setSelected] = useState('pdv');
-
+    const [selected, setSelected] = useState('dashboard');
+    
+    // ------------------------------------
+    // 1. CARREGAMENTO INICIAL
+    // ------------------------------------
     useEffect(() => {
-      async function initData() {
+      function initData() {
         try {
-          // 1. Carregar/Inicializar Insumos
-          let ins = await storageGet('insumos', null);
-          if (!ins || ins.length === 0) {
-            await storageSet('insumos', initialInsumos);
-            ins = initialInsumos;
-          }
-          setInsumos(ins);
-          
-          // Mapeia insumos para calcular o custo dos produtos
+          let ins = storageGet('insumos', initialInsumos);
           const insumosMap = ins.reduce((map, i) => { map[i.id] = i; return map; }, {});
           
-          // 2. Calcular produtos com o custo correto dos insumos
-          const produtosCalculados = getFlatMenu(cardapioData, ins);
+          let prodsBase = getFlatMenu(cardapioData, ins);
           
-          // 3. Carregar/Inicializar Produtos
-          let prods = await storageGet('produtos', null);
-          if (!prods || prods.length === 0) {
-            await storageSet('produtos', produtosCalculados);
-            prods = produtosCalculados;
-          } else {
-             // Atualiza apenas o campo custoProduto dos produtos carregados com o custo mais recente dos insumos
-             prods = prods.map(p => ({
-                 ...p,
-                 custoProduto: getCustoUnitarioItem(p, insumosMap)
-             }));
-          }
+          const prodsSalvos = storageGet('produtos', []);
+          const prodsSalvosMap = prodsSalvos.reduce((map, p) => { map[p.id] = p; return map; }, {});
           
-          const vends = await storageGet('vendas', []);
-          const peds = await storageGet('pedidos', []);
-          const pers = await storageGet('perdas', []); 
+          let prodsFinais = prodsBase.map(p => {
+            const pSalvo = prodsSalvosMap[p.id];
+            return {
+              ...p,
+              estoque: pSalvo ? pSalvo.estoque : p.estoque,
+              manutencao: pSalvo ? pSalvo.manutencao : p.manutencao,
+            };
+          }).filter(p => !p.baseId || prodsSalvosMap[p.id] || p.id < 9999);
+
+          storageSet('insumos', ins); 
+          setInsumos(ins);
+
+          storageSet('produtos', prodsFinais);
+          setProdutos(prodsFinais);
           
+          const vends = storageGet('vendas', []);
+          const peds = storageGet('pedidos', []);
+          const pers = storageGet('perdas', []); 
           const webPends = getPedidosWebPendentes();
 
-          setProdutos(prods);
           setVendas(vends);
           setPedidos(peds);
           setPerdas(pers); 
           setPedidosPendentesWeb(webPends); 
         } catch(e) {
-          console.error('Erro ao carregar dados:', e);
-          alert('Erro ao conectar com Firebase. Verifique as credenciais!');
+          console.error('Erro ao carregar dados do localStorage:', e);
+          setInsumos(initialInsumos);
+          setProdutos(initialProdutos);
+          alert('Erro ao carregar dados. O sistema pode ter perdido histórico de vendas/pedidos, mas o cardápio base foi restaurado.');
         } finally {
           setLoading(false);
         }
       }
       
       initData();
-      
-      storageWatch('pedidos', setPedidos);
-      storageWatch('produtos', setProdutos);
-      storageWatch('insumos', setInsumos); 
-      storageWatch('perdas', setPerdas); 
       
       const handleStorageChange = (e) => {
         if (e.key === 'pedidos_web_pendentes') {
@@ -1543,24 +1689,34 @@
       window.addEventListener('storage', handleStorageChange);
       
       return () => {
-        db.ref('pedidos').off();
-        db.ref('produtos').off();
-        db.ref('insumos').off();
-        db.ref('perdas').off();
         window.removeEventListener('storage', handleStorageChange);
       };
     }, []);
     
-    // Auto-save useEffects
-    useEffect(() => { if (!loading && produtos.length > 0) storageSet('produtos', produtos); }, [produtos, loading]);
-    useEffect(() => { if (!loading) storageSet('vendas', vendas); }, [vendas, loading]);
-    useEffect(() => { if (!loading) storageSet('pedidos', pedidos); }, [pedidos, loading]);
-    useEffect(() => { if (!loading && insumos.length > 0) storageSet('insumos', insumos); }, [insumos, loading]); 
-    useEffect(() => { if (!loading) storageSet('perdas', perdas); }, [perdas, loading]); 
-
-    const salvarProdutos = (novos) => setProdutos(novos);
-    const salvarInsumos = (novos) => setInsumos(novos); 
-    const salvarPerdas = (novos) => setPerdas(novos); 
+    // ------------------------------------
+    // 2. PERSISTÊNCIA 
+    // ------------------------------------
+    const salvarProdutos = (novos) => { setProdutos(novos); storageSet('produtos', novos); };
+    const salvarInsumos = (novos) => { setInsumos(novos); storageSet('insumos', novos); };
+    const salvarPerdas = (novos) => { setPerdas(novos); storageSet('perdas', novos); }; 
+    const salvarVendas = (novos) => { setVendas(novos); storageSet('vendas', novos); };
+    const salvarPedidos = (novos) => { setPedidos(novos); storageSet('pedidos', novos); };
+    
+    useEffect(() => { 
+        if (!loading) { 
+            storageSet('vendas', vendas);
+        } 
+    }, [vendas, loading]);
+    
+    useEffect(() => { 
+        if (!loading) { 
+            storageSet('pedidos', pedidos);
+        } 
+    }, [pedidos, loading]);
+    
+    // ------------------------------------
+    // 3. FLUXO PDV
+    // ------------------------------------
 
     function adicionarAoCarrinho(produto){ 
       const itemExistente = carrinho.find(i=>i.id===produto.id);
@@ -1609,7 +1765,6 @@
           }
       }
       
-      // 1. Dar baixa no estoque de PRODUTOS
       const novosProdutos = produtos.map(produto => {
         const itemVendido = carrinho.find(item => item.id === produto.id);
         if(itemVendido) return {...produto, estoque: produto.estoque - itemVendido.quantidade};
@@ -1617,62 +1772,60 @@
       });
       salvarProdutos(novosProdutos);
       
-      // 2. Dar baixa no estoque de INSUMOS e calcular custo
       const custoVenda = darBaixaInsumos(carrinho, produtos, insumos, setInsumos);
       
-      const venda = { 
-        id: uid(), 
-        data: new Date().toISOString(), 
-        itens: carrinho.map(i => ({ 
+      const itensVenda = carrinho.map(i => ({ 
             id: i.id, 
             nome: i.nome, 
             preco: i.preco, 
             quantidade: i.quantidade,
-            custoUnitario: i.custoProduto || 0 // Adiciona o custo unitário do produto no momento da venda
-        })), 
+            custoUnitario: i.custoProduto || 0
+      }));
+
+      const venda = { 
+        id: uid(), 
+        data: new Date().toISOString(), 
+        itens: itensVenda, 
         total: total,
         custoVenda: custoVenda, 
         origem: 'PDV Balcão' 
       };
       
-      setVendas([...vendas, venda]);
       setCarrinho([]);
 
-      // Novo: Gerar pedido para cozinha
       const novoPedido = {
         id: uid(),
         data: new Date().toISOString(),
         nomeCliente: 'Venda Direta',
-        itens: venda.itens,
+        itens: itensVenda,
         total: venda.total,
         status: 'Pendente',
-        tipo: 'Venda Direta'
+        tipo: 'Venda Direta',
+        custoVenda: custoVenda
       };
-      setPedidos(prevPedidos => [...prevPedidos, novoPedido]);
+      salvarPedidos([...pedidos, novoPedido]);
+      salvarVendas([...vendas, venda]);
 
-      alert(`Venda finalizada! Total: ${currency(total)} | Custo Estimado: ${currency(custoVenda)}`);
+      alert(`Venda finalizada e Pedido enviado para Cozinha! Total: ${currency(total)}`);
     }
-    
-    // Função para abrir comanda removida.
     
     function finalizarPedidoEGerarVenda(pedido) {
       if (!confirm(`Finalizar pedido de ${pedido.nomeCliente}?`)) return;
 
-      const custoPedido = pedido.itens.reduce((sum, item) => sum + (item.custoUnitario || 0) * item.quantidade, 0);
+      const custoPedido = pedido.custoVenda || pedido.itens.reduce((sum, item) => sum + (item.custoUnitario || 0) * item.quantidade, 0);
 
       const novaVenda = {
         id: pedido.id,
         data: new Date().toISOString(),
-        itens: pedido.itens,
+        itens: pedido.itens.map(i => ({...i, custoUnitario: i.custoUnitario || 0})),
         total: pedido.total,
         custoVenda: custoPedido, 
         origem: `Pedido - ${pedido.nomeCliente}`
       };
       
-      // Aqui apenas registramos o pedido como vendido, a baixa de estoque já ocorreu
-      
-      setVendas([...vendas, novaVenda]);
-      setPedidos(pedidos.map(p => p.id === pedido.id ? { ...p, status: 'Vendido' } : p));
+      salvarVendas([...vendas, novaVenda]);
+
+      salvarPedidos(pedidos.map(p => p.id === pedido.id ? { ...p, status: 'Vendido' } : p));
       
       alert(`Venda registrada! Total: ${currency(pedido.total)} | Lucro estimado: ${currency(pedido.total - custoPedido)}`);
     }
@@ -1683,7 +1836,7 @@
       <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-dark via-cinzaEscuro to-dark">
         <div className="text-center">
           <div className="text-6xl text-terracota mb-4">⏳</div>
-          <div className="text-2xl text-terracota font-bold">Carregando Firebase...</div>
+          <div className="text-2xl text-terracota font-bold">Carregando LocalStorage...</div>
         </div>
       </div>
     );
@@ -1693,12 +1846,17 @@
     return (
       <div className="min-h-screen flex flex-col bg-slate-50">
         <Header user={user} onLogout={()=>setUser(null)} />
-        <div className="max-w-7xl mx-auto flex flex-1 w-full overflow-hidden">
-          <Sidebar selected={selected} setSelected={setSelected} totalPedidosWeb={pedidosPendentesWeb.length} />
-          <main className="flex-1 p-6 overflow-y-auto">
-            <div className="flex items-center justify-between mb-6">
-              <h1 className="text-2xl font-bold">Painel PDV - Thiago Santa Teresa</h1>
-            </div>
+        <div className="flex flex-1 w-full overflow-hidden">
+          <Sidebar selected={selected} setSelected={setSelected} totalPedidosWeb={pedidosPendentesWeb.length} user={user} onLogout={()=>setUser(null)} />
+          <main className="flex-1 overflow-y-auto app-main-content">
+            
+            {selected === 'dashboard' && (
+              <DashboardView 
+                vendas={vendas} 
+                perdas={perdas} 
+                produtos={produtos} 
+              />
+            )}
 
             {selected === 'pdv' && (
               <PDVView produtos={produtos} adicionarAoCarrinho={adicionarAoCarrinho} busca={busca} setBusca={setBusca}
@@ -1708,15 +1866,12 @@
             
             {selected === 'pedidos_web' && (
               <PedidosWeb 
+                pedidos={pedidos}
+                setPedidos={salvarPedidos}
                 pedidosPendentesWeb={pedidosPendentesWeb} 
                 setPedidosPendentesWeb={setPedidosPendentesWeb}
-                setPedidos={setPedidos}
+                finalizarPedidoEGerarVenda={finalizarPedidoEGerarVenda}
               />
-            )}
-
-            {selected === 'pedidos' && (
-              <PedidosView pedidos={pedidos} setPedidos={setPedidos} 
-                finalizarPedidoEGerarVenda={finalizarPedidoEGerarVenda} />
             )}
             
             {selected === 'produtos' && (
@@ -1727,7 +1882,7 @@
               <InsumosView insumos={insumos} salvarInsumos={salvarInsumos} />
             )}
             
-            {selected === 'custo_insumos' && ( // NOVO RELATÓRIO
+            {selected === 'custo_insumos' && ( 
               <CustoInsumosView produtos={produtos} insumos={insumos} />
             )}
             
@@ -1759,4 +1914,3 @@
 </body>
 
 </html>
-
