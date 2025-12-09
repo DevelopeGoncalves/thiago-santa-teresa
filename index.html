@@ -459,7 +459,7 @@
     const itens = [
       { key:'dashboard', label:'🏠 Dashboard' },
       { key:'pdv', label:'🛒 PDV' },
-      { key:'pedidos_web', label: `🌐 Gestão de Pedidos ${totalPedidosWeb > 0 ? `(${totalPedidosWeb} novos)` : ''}` }, 
+      { key:'caixa_contas', label:'💰 Controle de Caixa / Contas' }, 
       { key:'produtos', label:'📦 Produtos (Venda)' },
       { key:'insumos', label:'🧪 Insumos/Estoque' },
       { key:'custo_insumos', label:'📝 Relatório de Insumos' },
@@ -778,7 +778,7 @@
     );
   }
   
-  // NOVO/REESTRUTURADO: PedidosWeb (Central de Cozinha)
+  // FUNÇÃO DE GERENCIAMENTO DE PEDIDOS (MANUTENÇÃO PARA INTEGRAÇÃO NO PDV/ADMIN)
   function PedidosWeb({ pedidos, setPedidos, pedidosPendentesWeb, setPedidosPendentesWeb, finalizarPedidoEGerarVenda }) {
     
     function aceitarPedido(pedido) {
@@ -838,9 +838,13 @@
     return (
       <div className="space-y-6">
         <h2 className="text-3xl font-extrabold text-gray-800 border-b pb-2 flex items-center gap-3">
-          <span className="text-4xl text-terracota">🌐</span> Central de Pedidos (Cozinha & Web)
+          <span className="text-4xl text-terracota">🌐</span> Gestão de Pedidos (Visualização Admin)
         </h2>
         
+        <p className="text-sm text-gray-600 bg-yellow-100 p-3 rounded-xl border border-yellow-300">
+            🔔 Nota: Esta tela é uma visualização administrativa. A tela principal da cozinha para o preparo e finalização de pedidos deve ser acessada via **`cozinha.html`**.
+        </p>
+
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
           {/* COLUNA 1: NOVOS PEDIDOS (WEB E PDV) */}
           <div className="p-4 rounded-2xl shadow border border-red-200 bg-red-50">
@@ -934,6 +938,136 @@
         </div>
       </div>
     );
+  }
+
+  // NOVO COMPONENTE: Controle de Caixa e Contas Abertas
+  function CaixaContasView({ vendas, pedidos, finalizarPedidoEGerarVenda }) {
+      // FILTRA PEDIDOS QUE AINDA NÃO FORAM VENDIDOS
+      const [contasEmAberto, setContasEmAberto] = useState(pedidos.filter(p => p.status !== 'Vendido'));
+      const [sangria, setSangria] = useState('');
+      const [historicoCaixa, setHistoricoCaixa] = useState(storageGet('historico_caixa', []));
+      
+      useEffect(() => {
+          // Atualiza as contas abertas sempre que os pedidos mudarem
+          setContasEmAberto(pedidos.filter(p => p.status !== 'Vendido'));
+      }, [pedidos]);
+
+      function registrarSangria(e) {
+          e.preventDefault();
+          const valor = Number(sangria);
+          if (valor <= 0) return alert('Valor inválido.');
+
+          const novaSangria = {
+              id: uid(),
+              data: new Date().toISOString(),
+              tipo: 'Sangria',
+              valor: -valor, // Sangria é um valor negativo para o caixa
+              descricao: 'Retirada de troco/adiantamento'
+          };
+          
+          const novoHistorico = [...historicoCaixa, novaSangria];
+          storageSet('historico_caixa', novoHistorico);
+          setHistoricoCaixa(novoHistorico);
+          setSangria('');
+          alert(`Sangria de ${currency(valor)} registrada!`);
+      }
+      
+      function fecharConta(pedido) {
+          // Chamamos a função de finalização da venda, que também move o pedido para 'Vendido'.
+          // CORREÇÃO: Permitir fechar a conta apenas se o status for 'Pronto'
+          if(pedido.status !== 'Pronto') {
+              alert("Aguarde a cozinha finalizar o pedido (status 'Pronto') antes de fechar a conta.");
+              return;
+          }
+          finalizarPedidoEGerarVenda(pedido);
+      }
+
+      const totalVendasCaixa = vendas.reduce((sum, v) => sum + v.total, 0);
+      const totalSangrias = historicoCaixa.filter(h => h.tipo === 'Sangria').reduce((sum, h) => sum + h.valor, 0);
+      const saldoEstimado = totalVendasCaixa + totalSangrias; // Sangria é negativa, então já subtrai
+
+      return (
+          <div className="p-6 bg-slate-50 min-h-full space-y-6">
+              <h2 className="text-3xl font-extrabold text-gray-800 border-b pb-2 flex items-center gap-3">
+                  <span className="text-4xl text-terracota">💰</span> Controle de Caixa & Contas
+              </h2>
+
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                  {/* Card 1: Contas Abertas */}
+                  <div className="onchef-card bg-red-600/90">
+                      <div className="onchef-card-subtitle">Contas Ativas (Aguardando Preparo/Fechamento)</div>
+                      <div className="onchef-card-title">{contasEmAberto.length} Pedidos</div>
+                  </div>
+                  
+                  {/* Card 2: Saldo Estimado (Receita Total) */}
+                  <div className="onchef-card bg-blue-600/90">
+                      <div className="onchef-card-subtitle">Receita Total de Vendas (no período)</div>
+                      <div className="onchef-card-title">{currency(totalVendasCaixa)}</div>
+                  </div>
+                  
+                  {/* Card 3: Sangrias/Retiradas */}
+                  <div className="onchef-card bg-yellow-600/90">
+                      <div className="onchef-card-subtitle">Sangrias Registradas</div>
+                      <div className="onchef-card-title">{currency(Math.abs(totalSangrias))}</div>
+                      <div className="text-right text-xs opacity-90">Saldo Estimado (Total): {currency(saldoEstimado)}</div>
+                  </div>
+              </div>
+              
+              <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                  {/* Coluna 1: Contas Ativas */}
+                  <div className="bg-white p-4 rounded-2xl shadow border lg:col-span-2">
+                      <h3 className="font-bold text-lg mb-4 text-terracota">Contas Abertas para Cobrança</h3>
+                      <div className="space-y-3 max-h-96 overflow-y-auto">
+                          {contasEmAberto.sort((a,b) => new Date(a.data) - new Date(b.data)).map(p => (
+                              <div key={p.id} className={`p-3 rounded-xl border ${p.status === 'Pendente' ? 'bg-red-50' : p.status === 'Em Preparo' ? 'bg-yellow-50' : p.status === 'Pronto' ? 'bg-green-100' : 'bg-green-50'}`}>
+                                  <div className="flex justify-between items-center">
+                                      <div className="font-bold text-lg">{p.nomeCliente}</div>
+                                      <div className="text-terracota font-bold">{currency(p.total)}</div>
+                                  </div>
+                                  <div className="text-sm text-gray-600">
+                                      Status: <b className={`font-semibold ${p.status === 'Pendente' ? 'text-red-500' : p.status === 'Em Preparo' ? 'text-yellow-500' : 'text-green-500'}`}>{p.status}</b> | Origem: {p.tipo}
+                                  </div>
+                                  <ul className="list-disc list-inside text-xs ml-3 mt-1 text-gray-500">
+                                      {p.itens.map(it => <li key={it.id}>{it.quantidade}x {it.nome}</li>)}
+                                  </ul>
+                                  <button onClick={() => fecharConta(p)} 
+                                      className={`w-full mt-3 py-2 text-white rounded-lg transition ${p.status === 'Pronto' ? 'bg-green-500 hover:bg-green-600' : 'bg-gray-400 cursor-not-allowed'}`}
+                                      disabled={p.status !== 'Pronto'}
+                                  >
+                                      {p.status === 'Pronto' ? '✅ Cobrar & Fechar Conta' : 'Aguardando Cozinha...'}
+                                  </button>
+                              </div>
+                          ))}
+                          {contasEmAberto.length === 0 && <div className="text-gray-500 text-center py-6">Nenhuma conta aberta.</div>}
+                      </div>
+                  </div>
+                  
+                  {/* Coluna 2: Sangria / Histórico */}
+                  <div className="bg-white p-4 rounded-2xl shadow border">
+                      <h3 className="font-bold text-lg mb-4 text-red-700">Registrar Sangria (Retirada de Caixa)</h3>
+                      <form onSubmit={registrarSangria} className="space-y-3 mb-6 border-b pb-4">
+                          <input value={sangria} onChange={e => setSangria(e.target.value)} placeholder="Valor R$" type="number" step="0.01" className="w-full p-3 border rounded-xl" required />
+                          <button className="w-full py-3 bg-red-500 text-white rounded-xl font-semibold hover:bg-red-600">🔴 Registrar Sangria</button>
+                      </form>
+                      
+                      <h4 className="font-bold text-sm mb-3">Histórico de Movimentações</h4>
+                      <div className="space-y-2 text-sm max-h-56 overflow-y-auto">
+                          {historicoCaixa.sort((a,b) => new Date(b.data) - new Date(a.data)).slice(0, 10).map(h => (
+                              <div key={h.id} className={`flex justify-between p-2 rounded-lg ${h.tipo === 'Sangria' ? 'bg-red-100' : 'bg-green-100'}`}>
+                                  <div>
+                                      {h.tipo} - <span className="text-xs text-gray-500">{new Date(h.data).toLocaleTimeString()}</span>
+                                  </div>
+                                  <div className={`font-bold ${h.valor < 0 ? 'text-red-700' : 'text-green-700'}`}>
+                                      {currency(Math.abs(h.valor))}
+                                  </div>
+                              </div>
+                          ))}
+                          {historicoCaixa.length === 0 && <div className="text-gray-500 text-center py-2">Nenhum registro.</div>}
+                      </div>
+                  </div>
+              </div>
+          </div>
+      );
   }
 
   function ProdutosView({produtos, salvarProdutos, insumos}){
@@ -1643,66 +1777,65 @@
     const [selected, setSelected] = useState('dashboard');
     
     // ------------------------------------
-    // 1. CARREGAMENTO INICIAL
+    // 1. CARREGAMENTO E SINCRONIZAÇÃO INICIAL (CORRIGIDO)
     // ------------------------------------
-    useEffect(() => {
-      function initData() {
+    const loadData = () => {
         try {
-          let ins = storageGet('insumos', initialInsumos);
-          const insumosMap = ins.reduce((map, i) => { map[i.id] = i; return map; }, {});
-          
-          let prodsBase = getFlatMenu(cardapioData, ins);
-          
-          const prodsSalvos = storageGet('produtos', []);
-          const prodsSalvosMap = prodsSalvos.reduce((map, p) => { map[p.id] = p; return map; }, {});
-          
-          let prodsFinais = prodsBase.map(p => {
-            const pSalvo = prodsSalvosMap[p.id];
-            return {
-              ...p,
-              estoque: pSalvo ? pSalvo.estoque : p.estoque,
-              manutencao: pSalvo ? pSalvo.manutencao : p.manutencao,
-            };
-          }).filter(p => !p.baseId || prodsSalvosMap[p.id] || p.id < 9999);
+            // Carrega insumos primeiro
+            let ins = storageGet('insumos', initialInsumos);
+            
+            // Carrega produtos com base nos insumos e dados salvos
+            let prodsBase = getFlatMenu(cardapioData, ins);
+            const prodsSalvos = storageGet('produtos', []);
+            const prodsSalvosMap = prodsSalvos.reduce((map, p) => { map[p.id] = p; return map; }, {});
+            
+            let prodsFinais = prodsBase.map(p => {
+                const pSalvo = prodsSalvosMap[p.id];
+                return {
+                    ...p,
+                    estoque: pSalvo ? pSalvo.estoque : p.estoque,
+                    manutencao: pSalvo ? pSalvo.manutencao : p.manutencao,
+                };
+            }).filter(p => !p.baseId || prodsSalvosMap[p.id] || p.id < 9999);
 
-          storageSet('insumos', ins); 
-          setInsumos(ins);
+            // Atualiza estados
+            storageSet('insumos', ins); 
+            setInsumos(ins);
 
-          storageSet('produtos', prodsFinais);
-          setProdutos(prodsFinais);
-          
-          const vends = storageGet('vendas', []);
-          const peds = storageGet('pedidos', []);
-          const pers = storageGet('perdas', []); 
-          const webPends = getPedidosWebPendentes();
-
-          setVendas(vends);
-          setPedidos(peds);
-          setPerdas(pers); 
-          setPedidosPendentesWeb(webPends); 
+            storageSet('produtos', prodsFinais);
+            setProdutos(prodsFinais);
+            
+            setVendas(storageGet('vendas', []));
+            setPedidos(storageGet('pedidos', []));
+            setPerdas(storageGet('perdas', [])); 
+            setPedidosPendentesWeb(getPedidosWebPendentes()); 
         } catch(e) {
-          console.error('Erro ao carregar dados do localStorage:', e);
-          setInsumos(initialInsumos);
-          setProdutos(initialProdutos);
-          alert('Erro ao carregar dados. O sistema pode ter perdido histórico de vendas/pedidos, mas o cardápio base foi restaurado.');
-        } finally {
-          setLoading(false);
+            console.error('Erro ao carregar dados do localStorage:', e);
+            setInsumos(initialInsumos);
+            setProdutos(initialProdutos);
         }
-      }
-      
-      initData();
-      
-      const handleStorageChange = (e) => {
-        if (e.key === 'pedidos_web_pendentes') {
-            setPedidosPendentesWeb(getPedidosWebPendentes());
-        }
-      };
+    };
+    
+    useEffect(() => {
+        // Primeira carga ao iniciar
+        loadData();
+        setLoading(false);
+        
+        // Sincronização de pedidos pendentes da web (para atualização automática na aba Controle de Caixa)
+        const handleStorageChange = (e) => {
+            // Se houver mudança em pedidos (aceitos no PDV ou finalizados na Cozinha)
+            // ou pedidos pendentes da web (criados pelo cardapio.html)
+            if (e.key === 'pedidos_web_pendentes' || e.key === 'pedidos' || e.key === 'vendas') {
+                // Executa a carga completa para atualizar todos os estados relacionados a pedidos e vendas
+                loadData();
+            }
+        };
 
-      window.addEventListener('storage', handleStorageChange);
-      
-      return () => {
-        window.removeEventListener('storage', handleStorageChange);
-      };
+        window.addEventListener('storage', handleStorageChange);
+        
+        return () => {
+            window.removeEventListener('storage', handleStorageChange);
+        };
     }, []);
     
     // ------------------------------------
@@ -1765,6 +1898,7 @@
 
     function removerDoCarrinho(id){ setCarrinho(carrinho.filter(i=>i.id!==id)); }
 
+    // FUNÇÃO FINALIZAR VENDA (CORRIGIDA)
     function finalizarVenda(){
       if(carrinho.length === 0) return alert('Carrinho vazio!');
       const total = carrinho.reduce((s,i)=> s + i.preco * i.quantidade, 0);
@@ -1777,6 +1911,7 @@
           }
       }
       
+      // 1. Baixa o estoque do Produto (simulando a saída do PDV)
       const novosProdutos = produtos.map(produto => {
         const itemVendido = carrinho.find(item => item.id === produto.id);
         if(itemVendido) return {...produto, estoque: produto.estoque - itemVendido.quantidade};
@@ -1784,6 +1919,7 @@
       });
       salvarProdutos(novosProdutos);
       
+      // 2. Calcula o custo para o Pedido
       const custoVenda = darBaixaInsumos(carrinho, produtos, insumos, setInsumos);
       
       const itensVenda = carrinho.map(i => ({ 
@@ -1794,31 +1930,24 @@
             custoUnitario: i.custoProduto || 0
       }));
 
-      const venda = { 
-        id: uid(), 
-        data: new Date().toISOString(), 
-        itens: itensVenda, 
+      // 3. CRIAÇÃO DO NOVO PEDIDO QUE VAI PARA A COZINHA/KANBAN
+      const novoPedido = {
+        id: uid(),
+        data: new Date().toISOString(),
+        nomeCliente: 'Venda Direta', // Identificador para PDV
+        itens: itensVenda,
         total: total,
-        custoVenda: custoVenda, 
-        origem: 'PDV Balcão' 
+        status: 'Pendente', // Status inicial para aparecer na fila do Kanban (cozinha.html)
+        tipo: 'Venda Direta',
+        custoVenda: custoVenda // Adiciona o custo estimado
       };
       
       setCarrinho([]);
 
-      const novoPedido = {
-        id: uid(),
-        data: new Date().toISOString(),
-        nomeCliente: 'Venda Direta',
-        itens: itensVenda,
-        total: venda.total,
-        status: 'Pendente',
-        tipo: 'Venda Direta',
-        custoVenda: custoVenda
-      };
-      salvarPedidos([...pedidos, novoPedido]);
-      salvarVendas([...vendas, venda]);
-
-      alert(`Venda finalizada e Pedido enviado para Cozinha! Total: ${currency(total)}`);
+      // O pedido é salvo para aparecer na Central de Pedidos (cozinha.html) e Contas Abertas (CaixaContasView)
+      salvarPedidos([...pedidos, novoPedido]); 
+      
+      alert(`Venda Direta registrada e pedido enviado para Cozinha! Total: ${currency(total)}`);
     }
     
     function finalizarPedidoEGerarVenda(pedido) {
@@ -1876,6 +2005,16 @@
                      finalizarVenda={finalizarVenda} totalCarrinho={totalCarrinho} />
             )}
             
+            {/* NOVO COMPONENTE INTEGRADO: CONTROLE DE CAIXA */}
+            {selected === 'caixa_contas' && (
+              <CaixaContasView 
+                vendas={vendas}
+                pedidos={pedidos}
+                finalizarPedidoEGerarVenda={finalizarPedidoEGerarVenda}
+              />
+            )}
+
+            {/* O componente PedidosWeb foi mantido para compatibilidade, mas a aba do menu lateral foi substituída */}
             {selected === 'pedidos_web' && (
               <PedidosWeb 
                 pedidos={pedidos}
