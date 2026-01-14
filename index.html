@@ -11,7 +11,7 @@
     gtag('config', 'G-C9RLS2SDCJ');
   </script>
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>PDV - Thiago Santa Teresa (Custo e Ficha Técnica)</title>
+  <title>PDV - Thiago Santa Teresa (Completo)</title>
 
   <script src="https://cdn.tailwindcss.com"></script>
   <script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
@@ -84,6 +84,19 @@
     .onchef-card-title { font-size: 1.5rem; }
     .onchef-card-subtitle { font-size: 0.75rem; opacity: 0.8; }
     
+    /* Estilo para Modal */
+    .modal-overlay {
+        position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+        background-color: rgba(0, 0, 0, 0.5);
+        display: flex; justify-content: center; align-items: center;
+        z-index: 50;
+    }
+    .modal-content {
+        background: white; padding: 20px; border-radius: 12px;
+        max-width: 600px; width: 90%; max-height: 90vh; overflow-y: auto;
+        box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+    }
+    
   </style>
 </head>
 <body class="bg-slate-50">
@@ -97,16 +110,13 @@
    * FUNÇÕES DE UTILIDADE E ARMAZENAMENTO (DESACOPLADAS)
    *************************************************/
 
-  // Funções de formatação e utilidades
   function uid(){ return Date.now() + Math.floor(Math.random()*9999); }
   function currency(v){ return 'R$ ' + Number(v||0).toFixed(2).replace('.', ','); }
   
-  // Função para lidar com IDs numéricos (para compatibilidade)
   function prepareForStorage(data) {
     if (Array.isArray(data)) {
         return data.map(item => {
             if (typeof item.id === 'number' || typeof item.id === 'string' && item.id.includes('.')) {
-                // Converte IDs tipo 28.1 para '28-1' para o LocalStorage
                 return { ...item, id: String(item.id).replace('.', '-') };
             }
             return item;
@@ -118,7 +128,6 @@
   function prepareFromStorage(data) {
     if (Array.isArray(data)) {
         return data.map(item => ({
-            // Converte IDs tipo '28-1' de volta para 28.1 para o React
             ...item,
             id: typeof item.id === 'string' && item.id.includes('-') ? parseFloat(item.id.replace('-', '.')) : item.id
         }));
@@ -126,7 +135,6 @@
     return data;
   }
   
-  // Funções LocalStorage
   function storageGet(key, fallback=null){ 
     try {
       const data = localStorage.getItem(key);
@@ -168,7 +176,6 @@
     }
   }
 
-  // Função para calcular o custo total de um item
   function calcularCusto(item, insumosMap) {
       if (!item.fichaTecnica || item.fichaTecnica.length === 0) return 0;
       
@@ -182,19 +189,18 @@
       return custoTotal;
   }
   
-  // Transforma o menu em lista plana e calcula o custo
   function getFlatMenu(menu, insumos) {
       const insumosMap = insumos.reduce((map, i) => { map[i.id] = i; return map; }, {});
 
       const imageMap = {
-          1: 'https://images.unsplash.com/photo-1549419130-cf2a9128f658?q=80&w=1500&h=150&fit=crop&crop=center', // Cerveja Gelada (Garrafa)
-          6: 'https://images.unsplash.com/photo-1598282361730-e74f85e49c71?q=80&w=1500&h=150&fit=crop&crop=center', // Torresmo Defumado
-          13: 'https://images.unsplash.com/photo-1634633282298-b807a976c669?q=80&w=1500&h=150&fit=crop&crop=center', // Feijoada Completa
-          16: 'https://images.unsplash.com/photo-1579227124976-5868e4c1945c?q=80&w=1500&h=150&fit=crop&crop=center', // Caipirinha
-          23: 'https://images.unsplash.com/photo-1606822557174-874b2f155c5c?q=80&w=1500&h=150&fit=crop&crop=center', // Moscow Mule
-          28.1: 'https://images.unsplash.com/photo-1550989932-5a213e41de3b?q=80&w=1500&h=150&fit=crop&crop=center', // Vinho Tinto (Taça)
-          29.1: 'https://images.unsplash.com/photo-1596791221199-c454790089e1?q=80&w=1500&h=150&fit=crop&crop=center', // Vinho Branco (Taça)
-          30.2: 'https://images.unsplash.com/photo-1552591630-10903347f70b?q=80&w=1500&h=150&fit=crop&crop=center', // Espumante (Garrafa)
+          1: 'https://images.unsplash.com/photo-1549419130-cf2a9128f658?q=80&w=1500&h=150&fit=crop&crop=center', 
+          6: 'https://images.unsplash.com/photo-1598282361730-e74f85e49c71?q=80&w=1500&h=150&fit=crop&crop=center', 
+          13: 'https://images.unsplash.com/photo-1634633282298-b807a976c669?q=80&w=1500&h=150&fit=crop&crop=center', 
+          16: 'https://images.unsplash.com/photo-1579227124976-5868e4c1945c?q=80&w=1500&h=150&fit=crop&crop=center', 
+          23: 'https://images.unsplash.com/photo-1606822557174-874b2f155c5c?q=80&w=1500&h=150&fit=crop&crop=center', 
+          28.1: 'https://images.unsplash.com/photo-1550989932-5a213e41de3b?q=80&w=1500&h=150&fit=crop&crop=center', 
+          29.1: 'https://images.unsplash.com/photo-1596791221199-c454790089e1?q=80&w=1500&h=150&fit=crop&crop=center', 
+          30.2: 'https://images.unsplash.com/photo-1552591630-10903347f70b?q=80&w=1500&h=150&fit=crop&crop=center', 
       };
 
       let flatItems = [];
@@ -238,10 +244,6 @@
       return flatItems;
   }
   
-  /**********************
-   * LÓGICA DE CUSTO E ESTOQUE DE INSUMOS
-   **********************/
-  
   function darBaixaInsumos(carrinho, produtos, insumos, setInsumos) {
       const insumosMap = insumos.reduce((map, i) => { map[i.id] = {...i}; return map; }, {});
       let custoTotalVenda = 0;
@@ -267,10 +269,9 @@
   }
   
   /**********************
-   * INSUMOS E PRODUTOS BASE (MOCK DATA)
+   * MOCK DATA
    **********************/
    
-  // 1. INSUMOS (Matéria-prima)
   const initialInsumos = [
       { id: 'cachaca-500', nome: 'Cachaça (Garrafa)', unidade: 'ml', custoUnitario: 0.05, estoque: 10000, custoTotal: 500.00 },
       { id: 'limao-un', nome: 'Limão (Unidade)', unidade: 'un', custoUnitario: 0.50, estoque: 200 }, 
@@ -281,7 +282,6 @@
       { id: 'torresmo-porcao', nome: 'Torresmo (Porção P)', unidade: 'un', custoUnitario: 12.00, estoque: 100 },
   ];
    
-  // 2. PRODUTOS COM FICHA TÉCNICA (Menu)
   const cardapioData = {
       bebidas: [
           { id: 1, nome: 'Cerveja Gelada', preco: 8.00, emoji: '🍺', categoria: 'Bebidas', 
@@ -310,10 +310,10 @@
       cocktails: [
           { id: 16, nome: 'Caipirinha', preco: 18.00, emoji: '🍋', alcool: true, categoria: 'Cocktails',
               fichaTecnica: [ 
-                  { idInsumo: 'cachaca-500', quantidade: 50, unidade: 'ml' }, // 50ml de cachaça (R$ 2.50)
-                  { idInsumo: 'limao-un', quantidade: 1, unidade: 'un' },       // 1 limão (R$ 0.50)
-                  { idInsumo: 'acucar-g', quantidade: 10, unidade: 'g' },       // 10g açúcar (R$ 0.05)
-                  { idInsumo: 'gelo-un', quantidade: 3, unidade: 'un' }        // 3 doses de Gelo (R$ 0.15) - Custo total: R$ 3.20
+                  { idInsumo: 'cachaca-500', quantidade: 50, unidade: 'ml' }, 
+                  { idInsumo: 'limao-un', quantidade: 1, unidade: 'un' },       
+                  { idInsumo: 'acucar-g', quantidade: 10, unidade: 'g' },       
+                  { idInsumo: 'gelo-un', quantidade: 3, unidade: 'un' }        
               ] }, 
           { id: 17, nome: 'Fitzgerald', preco: 22.00, emoji: '🍸', alcool: true, categoria: 'Cocktails' },
           { id: 18, nome: 'Aperol Spritz', preco: 24.00, emoji: '🍊', alcool: true, categoria: 'Cocktails' },
@@ -355,7 +355,6 @@
   };
 
   const initialProdutosDefault = getFlatMenu(cardapioData, initialInsumos);
-  
   const initialProdutos = initialProdutosDefault.map(p => ({
     ...p,
     estoque: p.manutencao ? 0 : p.estoque,
@@ -547,7 +546,6 @@
           return Object.entries(map).map(([categoria, total]) => ({ categoria, total }));
       }, [vendas, produtos]);
 
-      // Gráfico de Barras - Vendas Diárias (Imitando o OnChef)
       useEffect(() => {
           if (areaRef.current && areaRef.current._chart) { try { areaRef.current._chart.destroy(); } catch { } }
           
@@ -585,7 +583,6 @@
           }
       }, [dailySalesChartData]);
 
-      // Gráfico de Pizza - Vendas por Categoria
       useEffect(() => {
           if (pieRef.current && pieRef.current._chart) { try { pieRef.current._chart.destroy(); } catch { } }
 
@@ -623,31 +620,22 @@
                   <h2 className="text-2xl font-bold text-gray-800">Painel de Vendas - {new Date().toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' })}</h2>
               </div>
               
-              {/* Caixas de Resumo */}
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
-                  
-                  {/* Total de Vendas (Verde) */}
                   <div className="onchef-card bg-green-600">
                       <div className="onchef-card-subtitle">Total de Vendas no Período</div>
                       <div className="onchef-card-title">{currency(salesData.totalSales)}</div>
                       <div className="text-right text-xs opacity-90">Total de {salesData.totalTickets} Vendas</div>
                   </div>
-                  
-                  {/* Custo Total (Vermelho Escuro - Lucro Bruto) */}
                   <div className="onchef-card bg-red-600">
                       <div className="onchef-card-subtitle">Custo Total dos Produtos (CMV)</div>
                       <div className="onchef-card-title">{currency(salesData.totalCosts)}</div>
                       <div className="text-right text-xs opacity-90">Perdas: {currency(salesData.totalLosses)}</div>
                   </div>
-                  
-                  {/* Lucro Bruto (Terracota) */}
                   <div className="onchef-card bg-terracota">
                       <div className="onchef-card-subtitle">Lucro Bruto (Vendas - Custo - Perdas)</div>
                       <div className="onchef-card-title">{currency(salesData.totalProfit)}</div>
                       <div className="text-right text-xs opacity-90">Margem: {(salesData.totalSales > 0 ? (salesData.totalProfit / salesData.totalSales) * 100 : 0).toFixed(1)}%</div>
                   </div>
-                  
-                  {/* Ticket Médio (Azul) */}
                   <div className="onchef-card bg-blue-600">
                       <div className="onchef-card-subtitle">Ticket Médio (Valor por Venda)</div>
                       <div className="onchef-card-title">{currency(salesData.averageTicket)}</div>
@@ -655,18 +643,13 @@
                   </div>
               </div>
               
-              {/* Gráficos */}
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                  
-                  {/* Gráfico de Barras Diárias (Esquerda) */}
                   <div className="bg-white p-4 rounded-2xl shadow-lg border">
                       <h3 className="font-bold text-lg mb-4 text-gray-700">Vendas por Dia</h3>
                       <div style={{ height: 350 }}>
                           {dailySalesChartData.length > 0 ? <canvas ref={areaRef}></canvas> : <div className="text-gray-500 text-center py-10">Sem dados</div>}
                       </div>
                   </div>
-                  
-                  {/* Gráfico de Pizza (Direita) */}
                   <div className="bg-white p-4 rounded-2xl shadow-lg border">
                       <h3 className="font-bold text-lg mb-4 text-gray-700">Vendas por Categoria (Receita)</h3>
                       <div style={{ height: 350 }}>
@@ -674,7 +657,6 @@
                       </div>
                   </div>
               </div>
-              
           </div>
       );
   }
@@ -683,16 +665,13 @@
    * PDV 
    *********************/
   function PDVView({produtos, adicionarAoCarrinho, busca, setBusca, carrinho, alterarQuantidade, removerDoCarrinho, finalizarVenda, totalCarrinho}){
-    // 1. Novo estado para controlar a categoria selecionada
     const [categoriaAtiva, setCategoriaAtiva] = useState('Todos');
 
-    // 2. Extrair categorias únicas dos produtos existentes
     const categorias = useMemo(() => {
       const cats = produtos.map(p => p.categoria);
       return ['Todos', ...new Set(cats.filter(c => c))];
     }, [produtos]);
 
-    // 3. Lógica de filtro combinada (Busca + Categoria)
     const produtosFiltrados = produtos.filter(p => {
       const matchesBusca = p.nome.toLowerCase().includes(busca.toLowerCase()) || 
                            p.categoria.toLowerCase().includes(busca.toLowerCase());
@@ -703,7 +682,6 @@
 
     return (
       <div className="space-y-4">
-        {/* BARRA DE PESQUISA E CATEGORIAS */}
         <div className="bg-white p-4 rounded-2xl shadow space-y-4">
           <input 
             value={busca} 
@@ -711,8 +689,6 @@
             placeholder="Pesquisar produto..." 
             className="w-full p-3 border rounded-xl focus:ring-2 focus:ring-terracota transition" 
           />
-          
-          {/* BARRA DE NAVEGAÇÃO HORIZONTAL */}
           <div className="flex gap-2 overflow-x-auto pb-2 scrollbar-hide">
             {categorias.map(cat => (
               <button
@@ -763,14 +739,11 @@
             </div>
           </div>
 
-          {/* Carrinho (mantido igual ao seu código original) */}
           <div className="bg-white p-4 rounded-2xl shadow h-fit sticky top-20 flex flex-col">
             <h3 className="font-bold text-lg flex items-center gap-2 text-terracota">🧾 Carrinho</h3>
-            {/* ... resto do seu código de carrinho ... */}
             <div className="mt-3 flex-1 max-h-96 overflow-y-auto space-y-3">
                {carrinho.map(item=>(
                  <div key={item.id} className="p-3 border rounded-lg">
-                    {/* Conteúdo do item do carrinho */}
                     <div className="flex justify-between font-medium">
                       <span>{item.nome}</span>
                       <span>{currency(item.preco * item.quantidade)}</span>
@@ -803,7 +776,6 @@
     );
   }
   
-  // FUNÇÃO DE GERENCIAMENTO DE PEDIDOS (MANUTENÇÃO PARA INTEGRAÇÃO NO PDV/ADMIN)
   function PedidosWeb({ pedidos, setPedidos, pedidosPendentesWeb, setPedidosPendentesWeb, finalizarPedidoEGerarVenda }) {
     
     function aceitarPedido(pedido) {
@@ -871,12 +843,9 @@
         </p>
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          {/* COLUNA 1: NOVOS PEDIDOS (WEB E PDV) */}
           <div className="p-4 rounded-2xl shadow border border-red-200 bg-red-50">
             <h3 className="font-bold text-xl mb-4 text-red-700">NOVOS ({pedidosPendentesWeb.length + pedidosPendentes.length})</h3>
             <div className="space-y-4 max-h-[70vh] overflow-y-auto">
-              
-              {/* Pedidos da WEB (Em Fila Local, ainda não aceitos) */}
               {pedidosPendentesWeb.map(p => (
                 <div key={p.id} className="p-3 bg-white rounded-xl shadow-md border-2 border-green-500">
                   <div className="font-bold text-lg text-green-700 flex justify-between items-center">
@@ -896,7 +865,6 @@
                 </div>
               ))}
               
-              {/* Pedidos Pendentes (Aceitos da Web ou Venda Direta) */}
               {pedidosPendentes.map(p => (
                 <div key={p.id} className="p-3 bg-white rounded-xl shadow-md border border-red-300">
                   <div className="font-bold text-lg text-red-600 flex justify-between items-center">
@@ -917,7 +885,6 @@
             </div>
           </div>
 
-          {/* COLUNA 2: EM PREPARO */}
           <div className="p-4 rounded-2xl shadow border border-yellow-200 bg-yellow-50">
             <h3 className="font-bold text-xl mb-4 text-yellow-700">EM PREPARO - {pedidosEmPreparo.length}</h3>
             <div className="space-y-4 max-h-[70vh] overflow-y-auto">
@@ -946,7 +913,6 @@
             </div>
           </div>
           
-          {/* COLUNA 3: FINALIZADOS */}
           <div className="p-4 rounded-2xl shadow border border-green-200 bg-green-50">
             <h3 className="font-bold text-xl mb-4 text-green-700">FINALIZADOS (Últimos 5)</h3>
             <div className="space-y-4 max-h-[70vh] overflow-y-auto">
@@ -965,15 +931,12 @@
     );
   }
 
-  // NOVO COMPONENTE: Controle de Caixa e Contas Abertas
   function CaixaContasView({ vendas, pedidos, finalizarPedidoEGerarVenda }) {
-      // FILTRA PEDIDOS QUE AINDA NÃO FORAM VENDIDOS
       const [contasEmAberto, setContasEmAberto] = useState(pedidos.filter(p => p.status !== 'Vendido'));
       const [sangria, setSangria] = useState('');
       const [historicoCaixa, setHistoricoCaixa] = useState(storageGet('historico_caixa', []));
       
       useEffect(() => {
-          // Atualiza as contas abertas sempre que os pedidos mudarem
           setContasEmAberto(pedidos.filter(p => p.status !== 'Vendido'));
       }, [pedidos]);
 
@@ -986,7 +949,7 @@
               id: uid(),
               data: new Date().toISOString(),
               tipo: 'Sangria',
-              valor: -valor, // Sangria é um valor negativo para o caixa
+              valor: -valor, 
               descricao: 'Retirada de troco/adiantamento'
           };
           
@@ -998,8 +961,6 @@
       }
       
       function fecharConta(pedido) {
-          // Chamamos a função de finalização da venda, que também move o pedido para 'Vendido'.
-          // CORREÇÃO: Permitir fechar a conta apenas se o status for 'Pronto'
           if(pedido.status !== 'Pronto') {
               alert("Aguarde a cozinha finalizar o pedido (status 'Pronto') antes de fechar a conta.");
               return;
@@ -1009,7 +970,7 @@
 
       const totalVendasCaixa = vendas.reduce((sum, v) => sum + v.total, 0);
       const totalSangrias = historicoCaixa.filter(h => h.tipo === 'Sangria').reduce((sum, h) => sum + h.valor, 0);
-      const saldoEstimado = totalVendasCaixa + totalSangrias; // Sangria é negativa, então já subtrai
+      const saldoEstimado = totalVendasCaixa + totalSangrias;
 
       return (
           <div className="p-6 bg-slate-50 min-h-full space-y-6">
@@ -1018,19 +979,16 @@
               </h2>
 
               <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                  {/* Card 1: Contas Abertas */}
                   <div className="onchef-card bg-red-600/90">
                       <div className="onchef-card-subtitle">Contas Ativas (Aguardando Preparo/Fechamento)</div>
                       <div className="onchef-card-title">{contasEmAberto.length} Pedidos</div>
                   </div>
                   
-                  {/* Card 2: Saldo Estimado (Receita Total) */}
                   <div className="onchef-card bg-blue-600/90">
                       <div className="onchef-card-subtitle">Receita Total de Vendas (no período)</div>
                       <div className="onchef-card-title">{currency(totalVendasCaixa)}</div>
                   </div>
                   
-                  {/* Card 3: Sangrias/Retiradas */}
                   <div className="onchef-card bg-yellow-600/90">
                       <div className="onchef-card-subtitle">Sangrias Registradas</div>
                       <div className="onchef-card-title">{currency(Math.abs(totalSangrias))}</div>
@@ -1039,7 +997,6 @@
               </div>
               
               <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                  {/* Coluna 1: Contas Ativas */}
                   <div className="bg-white p-4 rounded-2xl shadow border lg:col-span-2">
                       <h3 className="font-bold text-lg mb-4 text-terracota">Contas Abertas para Cobrança</h3>
                       <div className="space-y-3 max-h-96 overflow-y-auto">
@@ -1067,7 +1024,6 @@
                       </div>
                   </div>
                   
-                  {/* Coluna 2: Sangria / Histórico */}
                   <div className="bg-white p-4 rounded-2xl shadow border">
                       <h3 className="font-bold text-lg mb-4 text-red-700">Registrar Sangria (Retirada de Caixa)</h3>
                       <form onSubmit={registrarSangria} className="space-y-3 mb-6 border-b pb-4">
@@ -1099,6 +1055,10 @@
     const [form, setForm] = useState({ id:null, nome:'', preco:'', estoque:'', categoria:'', imagemUrl:'', fichaTecnica: [] });
     const [insumoForm, setInsumoForm] = useState({ idInsumo: '', quantidade: '' });
     
+    // Novos estados para filtro
+    const [busca, setBusca] = useState('');
+    const [categoriaFiltro, setCategoriaFiltro] = useState('Todas');
+    
     const insumosMap = insumos.reduce((map, i) => { map[i.id] = i; return map; }, {});
 
     useEffect(() => {
@@ -1110,6 +1070,19 @@
              }));
         }
     }, [form.id]);
+
+    // Extrair categorias para o filtro
+    const listaCategorias = useMemo(() => {
+        const cats = produtos.map(p => p.categoria).filter(c => c && c.trim() !== '');
+        return ['Todas', ...new Set(cats)];
+    }, [produtos]);
+
+    // Filtrar produtos
+    const produtosFiltrados = produtos.filter(p => {
+        const matchesBusca = p.nome.toLowerCase().includes(busca.toLowerCase());
+        const matchesCategoria = categoriaFiltro === 'Todas' || p.categoria === categoriaFiltro;
+        return matchesBusca && matchesCategoria;
+    });
 
     function submit(e){
       e.preventDefault();
@@ -1215,7 +1188,25 @@
         </div>
 
         <div className="lg:col-span-2 bg-white p-4 rounded-2xl shadow">
-          <h3 className="font-bold mb-3">Produtos de Venda</h3>
+          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-4 gap-3">
+             <h3 className="font-bold whitespace-nowrap">Produtos de Venda</h3>
+             <div className="flex flex-1 w-full sm:w-auto gap-2">
+                <input 
+                    value={busca} 
+                    onChange={e => setBusca(e.target.value)} 
+                    placeholder="Pesquisar por nome..." 
+                    className="w-full sm:w-48 p-2 text-sm border rounded-lg focus:outline-none focus:ring-1 focus:ring-terracota"
+                />
+                <select 
+                    value={categoriaFiltro} 
+                    onChange={e => setCategoriaFiltro(e.target.value)} 
+                    className="p-2 text-sm border rounded-lg focus:outline-none focus:ring-1 focus:ring-terracota"
+                >
+                    {listaCategorias.map(c => <option key={c} value={c}>{c}</option>)}
+                </select>
+             </div>
+          </div>
+          
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead className="bg-gradient-to-r from-red-50 to-red-100">
@@ -1224,10 +1215,11 @@
                   <th className="p-3 text-left">Categoria</th>
                   <th className="p-3 text-right">Preço</th>
                   <th className="p-3 text-right">Custo</th>
+                  <th className="p-3 text-center">Ações</th>
                 </tr>
               </thead>
               <tbody>
-                {produtos.map(p=>(
+                {produtosFiltrados.map(p=>(
                   <tr key={p.id} className="border-b hover:bg-gray-50">
                     <td className="p-3">
                         {p.imagemUrl && !p.imagemUrl.includes('placeholder') ? (
@@ -1250,13 +1242,15 @@
                 ))}
               </tbody>
             </table>
+            {produtosFiltrados.length === 0 && (
+                <div className="p-4 text-center text-gray-500">Nenhum produto encontrado.</div>
+            )}
           </div>
         </div>
       </div>
     );
   }
   
-  // NOVO: View para gerenciar Insumos (Matéria-prima)
   function InsumosView({ insumos, salvarInsumos }) {
     const [form, setForm] = useState({ id:null, nome:'', unidade:'un', custoUnitario:'', estoque:'' });
 
@@ -1351,64 +1345,138 @@
     );
   }
   
-  // NOVO: View para Relatório de Insumos/Custo
+  // MODIFICADO: View para Relatório de Insumos/Custo agora em Tabela + Modal Detalhado
   function CustoInsumosView({ produtos, insumos }) {
+      const [selectedProduto, setSelectedProduto] = useState(null);
       const insumosMap = insumos.reduce((map, i) => { map[i.id] = i; return map; }, {});
       
       const produtosComFicha = produtos.filter(p => p.fichaTecnica && p.fichaTecnica.length > 0);
 
+      // Componente do Modal
+      function FichaTecnicaModal({ produto, onClose }) {
+        if (!produto) return null;
+        
+        const custoTotal = produto.custoProduto;
+        const lucro = produto.preco - custoTotal;
+        const margem = produto.preco > 0 ? (lucro / produto.preco) * 100 : 0;
+
+        return (
+            <div className="modal-overlay" onClick={onClose}>
+                <div className="modal-content" onClick={e => e.stopPropagation()}>
+                    <div className="flex justify-between items-start mb-4 border-b pb-2">
+                        <div className="flex items-center gap-3">
+                             <div className="text-3xl">{produto.emoji}</div>
+                             <div>
+                                <h3 className="text-xl font-bold text-gray-800">{produto.nome}</h3>
+                                <div className="text-sm text-gray-500">{produto.categoria}</div>
+                             </div>
+                        </div>
+                        <button onClick={onClose} className="text-gray-400 hover:text-gray-600 text-2xl font-bold">&times;</button>
+                    </div>
+                    
+                    <div className="grid grid-cols-2 gap-4 mb-6">
+                        <div className="bg-gray-50 p-3 rounded-lg text-center border">
+                            <div className="text-xs text-gray-500 uppercase font-bold">Preço de Venda</div>
+                            <div className="text-xl font-bold text-gray-800">{currency(produto.preco)}</div>
+                        </div>
+                        <div className="bg-red-50 p-3 rounded-lg text-center border border-red-100">
+                            <div className="text-xs text-red-500 uppercase font-bold">Custo Total (CMV)</div>
+                            <div className="text-xl font-bold text-red-700">{currency(custoTotal)}</div>
+                        </div>
+                        <div className="bg-green-50 p-3 rounded-lg text-center border border-green-100">
+                            <div className="text-xs text-green-500 uppercase font-bold">Lucro Bruto</div>
+                            <div className="text-xl font-bold text-green-700">{currency(lucro)}</div>
+                        </div>
+                        <div className="bg-blue-50 p-3 rounded-lg text-center border border-blue-100">
+                            <div className="text-xs text-blue-500 uppercase font-bold">Margem (%)</div>
+                            <div className="text-xl font-bold text-blue-700">{margem.toFixed(1)}%</div>
+                        </div>
+                    </div>
+                    
+                    <h4 className="font-bold text-gray-700 mb-3 border-b pb-1">Detalhamento dos Insumos</h4>
+                    <div className="overflow-x-auto">
+                        <table className="w-full text-sm mb-4">
+                            <thead>
+                                <tr className="bg-gray-100 text-left">
+                                    <th className="p-2">Ingrediente</th>
+                                    <th className="p-2 text-right">Qtd</th>
+                                    <th className="p-2 text-right">Custo Un.</th>
+                                    <th className="p-2 text-right">Total</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {produto.fichaTecnica.map((insumoRef, idx) => {
+                                    const insumoData = insumosMap[insumoRef.idInsumo];
+                                    const custoItem = insumoRef.quantidade * (insumoData?.custoUnitario || 0);
+                                    
+                                    return (
+                                        <tr key={idx} className="border-b">
+                                            <td className="p-2">{insumoData?.nome || 'Desconhecido'}</td>
+                                            <td className="p-2 text-right">{insumoRef.quantidade} {insumoRef.unidade}</td>
+                                            <td className="p-2 text-right text-gray-500">{currency(insumoData?.custoUnitario)}</td>
+                                            <td className="p-2 text-right font-medium">{currency(custoItem)}</td>
+                                        </tr>
+                                    );
+                                })}
+                            </tbody>
+                        </table>
+                    </div>
+                    
+                    <button onClick={onClose} className="w-full py-3 bg-terracota text-white rounded-xl font-bold hover:bg-redBrown transition">Fechar Ficha</button>
+                </div>
+            </div>
+        );
+      }
+
       return (
           <div className="space-y-6">
             <h2 className="text-3xl font-extrabold text-gray-800 border-b pb-2 flex items-center gap-3">
-              <span className="text-4xl text-terracota">📝</span> Relatório de Custo de Insumos por Produto
+              <span className="text-4xl text-terracota">📝</span> Relatório de Custos (Fichas Técnicas)
             </h2>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              {produtosComFicha.map(produto => (
-                  <div key={produto.id} className="bg-white p-4 rounded-2xl shadow-lg border border-gray-200">
-                      <h3 className="font-bold text-xl mb-3 text-redBrown">{produto.emoji} {produto.nome}</h3>
-                      <div className="flex justify-between font-bold text-lg border-b pb-2 mb-2">
-                          <span className="text-gray-600">Preço Venda:</span>
-                          <span className="text-terracota">{currency(produto.preco)}</span>
-                      </div>
-                      
-                      <h4 className="font-semibold text-gray-700 mt-4 mb-2">Insumos (Ficha Técnica):</h4>
-                      <div className="space-y-1 text-sm">
-                          {produto.fichaTecnica.map(insumoRef => {
-                              const insumoData = insumosMap[insumoRef.idInsumo];
-                              if (!insumoData) return <div key={insumoRef.idInsumo} className="text-red-500">Insumo Desconhecido!</div>;
-                              
-                              const custoItem = insumoRef.quantidade * insumoData.custoUnitario;
-                              
-                              return (
-                                  <div key={insumoRef.idInsumo} className="flex justify-between py-1 border-b border-dashed">
-                                      <span className="text-gray-600">
-                                          {insumoRef.quantidade}{insumoRef.unidade} de <b className="font-medium">{insumoData.nome}</b>
-                                      </span>
-                                      <span className="font-semibold text-green-700">
-                                          {currency(custoItem)}
-                                      </span>
-                                  </div>
-                          );
-                         })}
-                      </div>
-
-                      <div className="flex justify-between font-bold text-xl mt-4 pt-2 border-t border-terracota">
-                          <span className="text-green-800">CUSTO TOTAL:</span>
-                          <span className="text-green-800">{currency(produto.custoProduto)}</span>
-                      </div>
-                      <div className="flex justify-between font-bold text-lg mt-1">
-                          <span className="text-blue-800">LUCRO BRUTO:</span>
-                          <span className="text-blue-800">{currency(produto.preco - produto.custoProduto)}</span>
-                      </div>
-                  </div>
-              ))}
+            <div className="bg-white rounded-2xl shadow overflow-hidden">
+                <table className="w-full text-left border-collapse">
+                    <thead className="bg-gray-100 text-gray-600 uppercase text-sm font-semibold">
+                        <tr>
+                            <th className="p-4">Produto</th>
+                            <th className="p-4 hidden sm:table-cell">Categoria</th>
+                            <th className="p-4 text-right">Preço Venda</th>
+                            <th className="p-4 text-right text-red-600">Custo Total</th>
+                            <th className="p-4 text-center">Ações</th>
+                        </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-200">
+                        {produtosComFicha.map(produto => (
+                            <tr key={produto.id} className="hover:bg-gray-50 transition">
+                                <td className="p-4 font-medium text-gray-800 flex items-center gap-2">
+                                    <span className="text-xl">{produto.emoji}</span> {produto.nome}
+                                </td>
+                                <td className="p-4 text-gray-500 hidden sm:table-cell">{produto.categoria}</td>
+                                <td className="p-4 text-right text-gray-800">{currency(produto.preco)}</td>
+                                <td className="p-4 text-right font-bold text-red-600">{currency(produto.custoProduto)}</td>
+                                <td className="p-4 text-center">
+                                    <button 
+                                        onClick={() => setSelectedProduto(produto)}
+                                        className="bg-blue-100 text-blue-700 hover:bg-blue-200 px-4 py-2 rounded-lg text-sm font-bold transition"
+                                    >
+                                        Ver Ficha
+                                    </button>
+                                </td>
+                            </tr>
+                        ))}
+                        {produtosComFicha.length === 0 && (
+                            <tr><td colSpan="5" className="p-6 text-center text-gray-500">Nenhum produto com ficha técnica cadastrada.</td></tr>
+                        )}
+                    </tbody>
+                </table>
             </div>
+            
+            {/* Modal de Detalhes */}
+            {selectedProduto && <FichaTecnicaModal produto={selectedProduto} onClose={() => setSelectedProduto(null)} />}
           </div>
       );
   }
 
-  // NOVO: View para registrar perdas
   function PerdasView({ produtos, insumos, salvarPerdas, salvarInsumos, salvarProdutos }){
     const [tipo, setTipo] = useState('insumo');
     const [itemId, setItemId] = useState('');
@@ -1802,14 +1870,12 @@
     const [selected, setSelected] = useState('dashboard');
     
     // ------------------------------------
-    // 1. CARREGAMENTO E SINCRONIZAÇÃO INICIAL (CORRIGIDO)
+    // CARREGAMENTO E SINCRONIZAÇÃO INICIAL
     // ------------------------------------
     const loadData = () => {
         try {
-            // Carrega insumos primeiro
             let ins = storageGet('insumos', initialInsumos);
             
-            // Carrega produtos com base nos insumos e dados salvos
             let prodsBase = getFlatMenu(cardapioData, ins);
             const prodsSalvos = storageGet('produtos', []);
             const prodsSalvosMap = prodsSalvos.reduce((map, p) => { map[p.id] = p; return map; }, {});
@@ -1823,7 +1889,6 @@
                 };
             }).filter(p => !p.baseId || prodsSalvosMap[p.id] || p.id < 9999);
 
-            // Atualiza estados
             storageSet('insumos', ins); 
             setInsumos(ins);
 
@@ -1842,29 +1907,23 @@
     };
     
     useEffect(() => {
-        // Primeira carga ao iniciar
         loadData();
         setLoading(false);
         
-        // Sincronização de pedidos pendentes da web (para atualização automática na aba Controle de Caixa)
         const handleStorageChange = (e) => {
-            // Se houver mudança em pedidos (aceitos no PDV ou finalizados na Cozinha)
-            // ou pedidos pendentes da web (criados pelo cardapio.html)
             if (e.key === 'pedidos_web_pendentes' || e.key === 'pedidos' || e.key === 'vendas') {
-                // Executa a carga completa para atualizar todos os estados relacionados a pedidos e vendas
                 loadData();
             }
         };
 
         window.addEventListener('storage', handleStorageChange);
-        
         return () => {
             window.removeEventListener('storage', handleStorageChange);
         };
     }, []);
     
     // ------------------------------------
-    // 2. PERSISTÊNCIA 
+    // PERSISTÊNCIA 
     // ------------------------------------
     const salvarProdutos = (novos) => { setProdutos(novos); storageSet('produtos', novos); };
     const salvarInsumos = (novos) => { setInsumos(novos); storageSet('insumos', novos); };
@@ -1885,7 +1944,7 @@
     }, [pedidos, loading]);
     
     // ------------------------------------
-    // 3. FLUXO PDV
+    // FLUXO PDV
     // ------------------------------------
 
     function adicionarAoCarrinho(produto){ 
@@ -1923,7 +1982,6 @@
 
     function removerDoCarrinho(id){ setCarrinho(carrinho.filter(i=>i.id!==id)); }
 
-    // FUNÇÃO FINALIZAR VENDA (CORRIGIDA)
     function finalizarVenda(){
       if(carrinho.length === 0) return alert('Carrinho vazio!');
       const total = carrinho.reduce((s,i)=> s + i.preco * i.quantidade, 0);
@@ -1936,7 +1994,6 @@
           }
       }
       
-      // 1. Baixa o estoque do Produto (simulando a saída do PDV)
       const novosProdutos = produtos.map(produto => {
         const itemVendido = carrinho.find(item => item.id === produto.id);
         if(itemVendido) return {...produto, estoque: produto.estoque - itemVendido.quantidade};
@@ -1944,7 +2001,6 @@
       });
       salvarProdutos(novosProdutos);
       
-      // 2. Calcula o custo para o Pedido
       const custoVenda = darBaixaInsumos(carrinho, produtos, insumos, setInsumos);
       
       const itensVenda = carrinho.map(i => ({ 
@@ -1955,21 +2011,19 @@
             custoUnitario: i.custoProduto || 0
       }));
 
-      // 3. CRIAÇÃO DO NOVO PEDIDO QUE VAI PARA A COZINHA/KANBAN
       const novoPedido = {
         id: uid(),
         data: new Date().toISOString(),
-        nomeCliente: 'Venda Direta', // Identificador para PDV
+        nomeCliente: 'Venda Direta',
         itens: itensVenda,
         total: total,
-        status: 'Pendente', // Status inicial para aparecer na fila do Kanban (cozinha.html)
+        status: 'Pendente', 
         tipo: 'Venda Direta',
-        custoVenda: custoVenda // Adiciona o custo estimado
+        custoVenda: custoVenda 
       };
       
       setCarrinho([]);
 
-      // O pedido é salvo para aparecer na Central de Pedidos (cozinha.html) e Contas Abertas (CaixaContasView)
       salvarPedidos([...pedidos, novoPedido]); 
       
       alert(`Venda Direta registrada e pedido enviado para Cozinha! Total: ${currency(total)}`);
@@ -2030,7 +2084,6 @@
                      finalizarVenda={finalizarVenda} totalCarrinho={totalCarrinho} />
             )}
             
-            {/* NOVO COMPONENTE INTEGRADO: CONTROLE DE CAIXA */}
             {selected === 'caixa_contas' && (
               <CaixaContasView 
                 vendas={vendas}
@@ -2039,7 +2092,6 @@
               />
             )}
 
-            {/* O componente PedidosWeb foi mantido para compatibilidade, mas a aba do menu lateral foi substituída */}
             {selected === 'pedidos_web' && (
               <PedidosWeb 
                 pedidos={pedidos}
@@ -2088,6 +2140,4 @@
   ReactDOM.render(<App />, document.getElementById('root'));
   </script>
 </body>
-
 </html>
-
