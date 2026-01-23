@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Thiago Santa Teresa - Central de Cozinha (Pedidos)</title>
+  <title>KDS - Cozinha Thiago Santa Teresa</title>
 
   <script src="https://cdn.tailwindcss.com"></script>
   <script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
@@ -11,66 +11,36 @@
   <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
   
   <style>
-    body { -webkit-font-smoothing:antialiased; -moz-osx-font-smoothing:grayscale; background-color: #2d2d2d; }
+    body { background-color: #1a1a1a; color: white; font-family: sans-serif; }
     
     .kanban-column {
-      min-height: 85vh;
-      border-radius: 1rem;
-      padding: 1rem;
-      background: #1a1a1a;
-      box-shadow: 0 4px 10px rgba(0,0,0,0.5);
+      min-height: 85vh; border-radius: 1rem; padding: 1rem;
+      background: #262626; box-shadow: 0 4px 15px rgba(0,0,0,0.5);
+      display: flex; flex-direction: column;
     }
     .kanban-header {
-      font-weight: bold;
-      padding: 0.5rem 0;
-      border-bottom: 2px solid;
-      margin-bottom: 1rem;
-      font-size: 1.25rem;
+      font-weight: 800; padding-bottom: 0.5rem; border-bottom: 3px solid;
+      margin-bottom: 1rem; font-size: 1.4rem; text-transform: uppercase; letter-spacing: 1px;
     }
-    .card-pedido {
-        background-color: #3b3b3b;
-        color: #ffffff;
-        border-radius: 0.75rem;
-        padding: 1rem;
-        margin-bottom: 1rem;
-        box-shadow: 0 2px 5px rgba(0,0,0,0.3);
-        transition: transform 0.2s;
-    }
-    .card-pedido:hover {
-        transform: translateY(-2px);
-    }
-    .card-pedido-header {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        margin-bottom: 0.5rem;
-        padding-bottom: 0.5rem;
-        border-bottom: 1px solid #4a4a4a;
-    }
-    .card-pedido-title {
-        font-weight: bold;
-        font-size: 1.1rem;
-        color: #e4593c; /* Terracota */
-    }
-    .card-pedido-tag {
-        font-size: 0.75rem;
-        padding: 0.2rem 0.5rem;
-        border-radius: 0.5rem;
-    }
-    .kanban-scroll {
-        max-height: 75vh;
-        overflow-y: auto;
-    }
-    
-    /* Configurações Tailwind customizadas do index.html */
-    .text-terracota { color: #e4593c; }
-    .bg-terracota { background-color: #e4593c; }
-    .hover\:bg-redBrown:hover { background-color: #a93131; }
+    .kanban-scroll { flex: 1; overflow-y: auto; padding-right: 5px; }
 
-    ::-webkit-scrollbar { width:10px; height:10px; }
-    ::-webkit-scrollbar-thumb { background: linear-gradient(180deg, #e4593c, #a93131); border-radius:999px; }
-    ::-webkit-scrollbar-track { background: transparent; }
+    /* Card Styling */
+    .card-pedido {
+        background-color: #333; border-radius: 0.5rem; padding: 1rem; margin-bottom: 1rem;
+        box-shadow: 0 3px 6px rgba(0,0,0,0.4); position: relative; border-left: 5px solid #555;
+        transition: all 0.3s;
+    }
+    /* SLA Colors */
+    .sla-green { border-left-color: #10b981; }
+    .sla-yellow { border-left-color: #f59e0b; background-color: #42361c; }
+    .sla-red { border-left-color: #ef4444; background-color: #451a1a; animation: pulseRed 2s infinite; }
+
+    @keyframes pulseRed { 0% { box-shadow: 0 0 0 rgba(239, 68, 68, 0); } 70% { box-shadow: 0 0 10px rgba(239, 68, 68, 0.5); } 100% { box-shadow: 0 0 0 rgba(239, 68, 68, 0); } }
+
+    .obs-highlight { background: #5a2828; color: #ffcccc; padding: 4px 8px; border-radius: 4px; font-weight: bold; margin-top: 5px; display: block; font-size: 0.9rem; }
     
+    ::-webkit-scrollbar { width:8px; }
+    ::-webkit-scrollbar-thumb { background: #555; border-radius:4px; }
   </style>
 </head>
 <body>
@@ -78,377 +48,236 @@
   <div id="root"></div>
 
   <script type="text/babel">
-  const { useState, useEffect } = React;
+  const { useState, useEffect, useRef } = React;
 
-  // Variáveis mockadas para compatibilidade (devem ser as mesmas do index.html)
-  const initialInsumos = [
-      { id: 'cachaca-500', nome: 'Cachaça (Garrafa)', unidade: 'ml', custoUnitario: 0.05, estoque: 10000, custoTotal: 500.00 },
-      { id: 'limao-un', nome: 'Limão (Unidade)', unidade: 'un', custoUnitario: 0.50, estoque: 200 }, 
-      { id: 'acucar-g', nome: 'Açúcar (Kg)', unidade: 'g', custoUnitario: 0.005, estoque: 5000 }, 
-      { id: 'gelo-un', nome: 'Gelo (Dose)', unidade: 'un', custoUnitario: 0.05, estoque: 500 },
-      { id: 'cerveja-garrafa', nome: 'Cerveja (Garrafa 600ml)', unidade: 'un', custoUnitario: 5.50, estoque: 500 },
-      { id: 'refrigerante-lata', nome: 'Refrigerante (Lata 350ml)', unidade: 'un', custoUnitario: 3.50, estoque: 300 },
-      { id: 'torresmo-porcao', nome: 'Torresmo (Porção P)', unidade: 'un', custoUnitario: 12.00, estoque: 100 },
-  ];
-  
-  // Funções de Utilidade (copiadas do index.html)
-  function uid(){ return Date.now() + Math.floor(Math.random()*9999); }
-  function currency(v){ return 'R$ ' + Number(v||0).toFixed(2).replace('.', ','); }
+  // --- AUDIO ---
+  // Som de notificação curto
+  const notificationSound = new Audio('https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3');
 
-  function prepareForStorage(data) {
-    if (Array.isArray(data)) {
-        return data.map(item => {
-            if (typeof item.id === 'number' || typeof item.id === 'string' && item.id.includes('.')) {
-                return { ...item, id: String(item.id).replace('.', '-') };
-            }
-            return item;
-        });
-    }
-    return data;
-  }
-  
-  function prepareFromStorage(data) {
-    if (Array.isArray(data)) {
-        return data.map(item => ({
-            ...item,
-            id: typeof item.id === 'string' && item.id.includes('-') ? parseFloat(item.id.replace('-', '.')) : item.id
-        }));
-    }
-    return data;
-  }
-  
-  function storageGet(key, fallback=null){ 
-    try {
-      const data = localStorage.getItem(key);
-      if (data === null) return fallback;
-      
-      let parsedData = JSON.parse(data);
-      
-      if (key === 'produtos' && parsedData) {
-        parsedData = prepareFromStorage(parsedData);
-      }
-      
-      return parsedData;
-    } catch(e){ 
-      console.error('Erro ao ler localStorage:', e);
-      return fallback; 
-    }
-  }
-
-  function storageSet(key, value){ 
-    try {
-      let dataToSet = value;
-      if (key === 'produtos') {
-        dataToSet = prepareForStorage(value); 
-      }
-      localStorage.setItem(key, JSON.stringify(dataToSet));
-    } catch(e){
-      console.error('Erro ao salvar localStorage:', e);
-    }
-  }
-  
-  function getPedidosWebPendentes() {
-    try {
-      const data = localStorage.getItem('pedidos_web_pendentes');
-      const webPedidos = JSON.parse(data) || [];
-      return webPedidos.map(p => ({ 
-        ...p, 
-        tipo: 'Venda Web', 
-        status: 'Novo - WEB', 
-        id: p.id || uid(), 
-        data: p.data || new Date().toISOString() 
-      }));
-    } catch (e) {
-      console.error("Erro ao ler pedidos_web_pendentes do localStorage:", e);
-      return [];
-    }
-  }
-
-  // --- Funções de Estado Compartilhado (Para a Cozinha) ---
-
-  const initialProdutosDefault = [
-    // Mock limitado para dar baixa em insumos se necessário
-    { id: 1, nome: 'Cerveja Gelada', preco: 8.00, emoji: '🍺', categoria: 'Bebidas', custoProduto: 5.50, fichaTecnica: [ { idInsumo: 'cerveja-garrafa', quantidade: 1, unidade: 'un' } ] }, 
-    { id: 2, nome: 'Refrigerante', preco: 6.00, emoji: '🥤', categoria: 'Bebidas', custoProduto: 3.50, fichaTecnica: [ { idInsumo: 'refrigerante-lata', quantidade: 1, unidade: 'un' } ] },
-    { id: 6, nome: 'Torresmo Defumado', preco: 25.00, emoji: '🥓', categoria: 'Entradas', custoProduto: 12.00, fichaTecnica: [ { idInsumo: 'torresmo-porcao', quantidade: 1, unidade: 'un' } ] },
-    { id: 16, nome: 'Caipirinha', preco: 18.00, emoji: '🍋', categoria: 'Cocktails', custoProduto: 3.20, fichaTecnica: [ 
-        { idInsumo: 'cachaca-500', quantidade: 50, unidade: 'ml' }, 
-        { idInsumo: 'limao-un', quantidade: 1, unidade: 'un' },       
-        { idInsumo: 'acucar-g', quantidade: 10, unidade: 'g' },       
-        { idInsumo: 'gelo-un', quantidade: 3, unidade: 'un' }        
-    ] }, 
-  ];
-
-  function getFlatMenuMock(insumos) {
-      const savedProducts = storageGet('produtos', initialProdutosDefault);
-      return savedProducts.length > 0 ? savedProducts : initialProdutosDefault;
-  }
-  
-  function darBaixaInsumos(carrinho, produtos, insumos, setInsumos) {
-      const insumosMap = insumos.reduce((map, i) => { map[i.id] = {...i}; return map; }, {});
-      let custoTotalVenda = 0;
-      
-      const produtosComFT = storageGet('produtos', getFlatMenuMock(insumos));
-      
-      for (const item of carrinho) {
-          const produtoBase = produtosComFT.find(p => p.id === item.id);
-          if (!produtoBase || !produtoBase.fichaTecnica) continue;
-
-          for (const insumoRef of produtoBase.fichaTecnica) {
-              const insumoData = insumosMap[insumoRef.idInsumo];
-              if (insumoData) {
-                  const quantidadeBaixa = insumoRef.quantidade * item.quantidade;
-                  insumoData.estoque -= quantidadeBaixa;
-                  custoTotalVenda += quantidadeBaixa * insumoData.custoUnitario;
-              }
-          }
-      }
-      
-      const novosInsumos = Object.values(insumosMap);
-      setInsumos(novosInsumos);
-      return custoTotalVenda;
-  }
-  
-  function salvarInsumos(novos) { storageSet('insumos', novos); }
-  function salvarVendas(novos) { storageSet('vendas', novos); }
-  function salvarPedidos(novos) { storageSet('pedidos', novos); }
-
-
-  // --- Componente da Cozinha (Kanban) ---
   function CozinhaView() {
-    
-    // Estados independentes do Admin
     const [pedidos, setPedidos] = useState([]);
-    const [pedidosPendentesWeb, setPedidosPendentesWeb] = useState([]);
-    const [insumos, setInsumos] = useState(initialInsumos); 
-    const [produtosMock, setProdutosMock] = useState(getFlatMenuMock(initialInsumos)); 
+    const [pedidosWeb, setPedidosWeb] = useState([]);
+    const [somAtivo, setSomAtivo] = useState(false);
+    const [currentTime, setCurrentTime] = useState(Date.now());
 
+    // --- CARREGAMENTO ---
     const loadData = () => {
-        setPedidos(storageGet('pedidos', []));
-        setPedidosPendentesWeb(getPedidosWebPendentes());
-        setInsumos(storageGet('insumos', initialInsumos));
-        setProdutosMock(getFlatMenuMock(storageGet('insumos', initialInsumos)));
+        try {
+            const pCozinha = JSON.parse(localStorage.getItem('pedidos') || '[]');
+            const pWeb = JSON.parse(localStorage.getItem('pedidos_web_pendentes') || '[]');
+            return { pCozinha, pWeb };
+        } catch(e) { return { pCozinha:[], pWeb:[] }; }
     };
 
+    // Atualiza dados e SLA a cada 5s
     useEffect(() => {
-        loadData();
-        
-        // Sincronização em tempo real (a cada 5 segundos)
-        const intervalId = setInterval(loadData, 5000); 
-
-        // Event listener para mudanças no Storage
-        const handleStorageChange = (e) => {
-            if (e.key === 'pedidos_web_pendentes' || e.key === 'pedidos') {
-                loadData();
-            }
+        const sync = () => {
+            const { pCozinha, pWeb } = loadData();
+            
+            // Check for new orders to play sound
+            setPedidosWeb(prev => {
+                if (somAtivo && pWeb.length > prev.length) {
+                    notificationSound.play().catch(e => console.log("Audio bloqueado pelo browser"));
+                }
+                return pWeb;
+            });
+            setPedidos(pCozinha);
+            setCurrentTime(Date.now());
         };
-        window.addEventListener('storage', handleStorageChange);
 
-        return () => {
-            clearInterval(intervalId);
-            window.removeEventListener('storage', handleStorageChange);
-        };
-    }, []);
+        sync();
+        const interval = setInterval(sync, 5000); 
+        // SLA Timer visual update every minute
+        const timerInterval = setInterval(() => setCurrentTime(Date.now()), 60000);
 
-    
-    function aceitarPedido(pedido) {
-        if (!confirm(`Aceitar pedido de ${pedido.nomeCliente} e enviá-lo para a fila de preparo?`)) return;
+        return () => { clearInterval(interval); clearInterval(timerInterval); };
+    }, [somAtivo]);
 
-        const novoPedidoCozinha = {
-            id: uid(),
-            data: new Date().toISOString(),
-            nomeCliente: pedido.nomeCliente,
-            itens: pedido.itens,
-            total: pedido.total,
+
+    // --- AÇÕES ---
+    const salvarTudo = (novosPedidos, novosWeb) => {
+        if(novosPedidos) {
+            setPedidos(novosPedidos);
+            localStorage.setItem('pedidos', JSON.stringify(novosPedidos));
+        }
+        if(novosWeb) {
+            setPedidosWeb(novosWeb);
+            localStorage.setItem('pedidos_web_pendentes', JSON.stringify(novosWeb));
+        }
+    };
+
+    const aceitarWeb = (p) => {
+        const novo = { 
+            ...p, 
             status: 'Pendente', 
-            tipo: 'Venda Web',
-            itens: pedido.itens.map(item => {
-                const produtoBase = produtosMock.find(p => p.id === item.id || String(p.id).replace('.', '-') === String(item.id));
-                return { ...item, custoUnitario: produtoBase?.custoProduto || 0 };
-            })
+            tipo: 'Web', 
+            inicioPreparo: new Date().toISOString() // Marca hora que entrou na cozinha
         };
+        const updatedWeb = pedidosWeb.filter(x => x.id !== p.id);
+        const updatedCozinha = [...pedidos, novo];
+        salvarTudo(updatedCozinha, updatedWeb);
+    };
 
-        const novosPedidos = [...pedidos, novoPedidoCozinha];
-        setPedidos(novosPedidos);
-        salvarPedidos(novosPedidos);
+    const rejeitarWeb = (p) => {
+        if(!confirm("Rejeitar pedido?")) return;
+        const updatedWeb = pedidosWeb.filter(x => x.id !== p.id);
+        salvarTudo(null, updatedWeb);
+    };
 
-        const novosWeb = pedidosPendentesWeb.filter(p => p.id !== pedido.id);
-        setPedidosPendentesWeb(novosWeb);
-        localStorage.setItem('pedidos_web_pendentes', JSON.stringify(novosWeb.map(p => ({
-             id: p.id, data: p.data, nomeCliente: p.nomeCliente, itens: p.itens, total: p.total
-        }))));
-    }
-    
-    function rejeitarPedido(pedido) {
-        if (!confirm(`Rejeitar pedido de ${pedido.nomeCliente}? Isso irá removê-lo da fila.`)) return;
-        
-        const novosWeb = pedidosPendentesWeb.filter(p => p.id !== pedido.id);
-        setPedidosPendentesWeb(novosWeb);
-        localStorage.setItem('pedidos_web_pendentes', JSON.stringify(novosWeb.map(p => ({
-             id: p.id, data: p.data, nomeCliente: p.nomeCliente, itens: p.itens, total: p.total
-        }))));
-    }
-    
-    function alterarStatus(id, novoStatus) {
-      const novosPedidos = pedidos.map(p => p.id === id ? { ...p, status: novoStatus } : p);
-      setPedidos(novosPedidos);
-      salvarPedidos(novosPedidos);
-    }
-    
-    // FUNÇÃO CORRIGIDA - Agora muda o status para 'Pronto' e dá baixa nos insumos (se for WEB)
-    function finalizarPedidoEGerarVenda(pedido) {
-      
-      const custoPedido = pedido.custoVenda || pedido.itens.reduce((sum, item) => sum + (item.custoUnitario || 0) * item.quantidade, 0);
+    const moverStatus = (id, novoStatus) => {
+        const updated = pedidos.map(p => p.id === id ? { ...p, status: novoStatus } : p);
+        salvarTudo(updated, null);
+    };
 
-      // 1. Dar Baixa nos Insumos (Obrigatório para pedidos WEB que não tiveram baixa prévia no PDV)
-      // Pedidos do PDV já tem baixa de insumo e estoque de produto feita na função `finalizarVenda` do index.html
-      // Pedidos Web aceitos e iniciados na cozinha precisam ter a baixa de insumo feita aqui, pois o PDV só registra o pedido.
-      if(pedido.tipo === 'Venda Web') {
-         // O estoque de produtos não precisa ser baixado aqui, pois no fluxo WEB o estoque não é gerenciado pelo cardapio.html
-         // A baixa dos insumos deve ser feita aqui para o cálculo de CMV ser preciso.
-         darBaixaInsumos(pedido.itens, produtosMock, insumos, salvarInsumos);
-      }
-      
-      // 2. Mudar Status do Pedido para "PRONTO" e salvar
-      const pedidosAtuais = storageGet('pedidos', []);
-      const novosPedidos = pedidosAtuais.map(p => p.id === pedido.id ? { ...p, status: 'Pronto', custoVenda: custoPedido } : p);
-      
-      setPedidos(novosPedidos);
-      salvarPedidos(novosPedidos);
-      
-      // Alerta CLARO para o Garçom/Admin.
-      alert(`🔔 PEDIDO PRONTO: Chamar garçom para entregar o pedido de ${pedido.nomeCliente}!`);
-    }
-
-    const pedidosWebEmFila = pedidosPendentesWeb;
-    const pedidosPendentes = pedidos.filter(p => p.status === 'Pendente');
-    const pedidosEmPreparo = pedidos.filter(p => p.status === 'Em Preparo');
-    const pedidosProntos = pedidos.filter(p => p.status === 'Pronto'); // NOVO FILTRO
+    const getClassSLA = (dataString) => {
+        if (!dataString) return 'sla-green';
+        const diffMinutes = (currentTime - new Date(dataString).getTime()) / 60000;
+        if (diffMinutes > 20) return 'sla-red';
+        if (diffMinutes > 10) return 'sla-yellow';
+        return 'sla-green';
+    };
     
+    const getTempoDecorrido = (dataString) => {
+        if (!dataString) return '0 min';
+        const diff = Math.floor((currentTime - new Date(dataString).getTime()) / 60000);
+        return `${diff} min`;
+    };
+
+    // --- FILTROS ---
+    const novos = pedidosWeb;
+    const fila = pedidos.filter(p => p.status === 'Pendente');
+    const preparo = pedidos.filter(p => p.status === 'Em Preparo');
+    const prontos = pedidos.filter(p => p.status === 'Pronto');
 
     return (
-      <div className="p-6 h-screen">
-        <header className="mb-6 pb-3 border-b border-gray-600 flex justify-between items-center">
-            <h1 className="text-3xl font-extrabold text-terracota flex items-center gap-3">
-                🍳 Central de Cozinha
-            </h1>
-            <button 
-                onClick={() => window.location.reload()} 
-                className="px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition"
-            >
-                🔄 Atualizar (Forçar)
-            </button>
+      <div className="p-4 h-screen flex flex-col">
+        <header className="flex justify-between items-center mb-6 bg-gray-800 p-4 rounded-xl border border-gray-700">
+            <h1 className="text-3xl font-bold text-orange-500">👨‍🍳 KDS Cozinha</h1>
+            <div className="flex gap-4 items-center">
+                <button 
+                    onClick={() => setSomAtivo(!somAtivo)}
+                    className={`px-4 py-2 rounded-lg font-bold ${somAtivo ? 'bg-green-600' : 'bg-red-600'}`}
+                >
+                    {somAtivo ? '🔊 Som Ligado' : '🔇 Som Desligado'}
+                </button>
+                <div className="text-right text-sm text-gray-400">
+                    <div>Atualizado: {new Date().toLocaleTimeString()}</div>
+                </div>
+            </div>
         </header>
-        
-        {/* Kanban Board - Grid agora suporta 4 colunas de fluxo + 1 finalizados (se você quisesse 5) ou 4 no total */}
-        <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
-          
-          {/* COLUNA 1: NOVOS PEDIDOS (WEB EM FILA) */}
-          <div className="kanban-column bg-red-900/10 border-2 border-red-700">
-            <h3 className="kanban-header text-red-500 border-red-500">📥 NOVOS WEB ({pedidosWebEmFila.length})</h3>
-            <div className="kanban-scroll space-y-4">
-              {pedidosWebEmFila.map(p => (
-                <div key={p.id} className="card-pedido border-2 border-green-500 bg-green-900/20">
-                  <div className="card-pedido-header">
-                      <span className="card-pedido-title text-green-400">{p.nomeCliente}</span>
-                      <span className="card-pedido-tag bg-green-500 text-white">WEB</span>
-                  </div>
-                  <div className="text-xs text-gray-400 mb-2">Recebido: {new Date(p.data).toLocaleTimeString()}</div>
-                  <ul className="list-disc list-inside text-sm mb-3 ml-3 text-gray-300">
-                    {p.itens.map(it => <li key={it.id}>{it.quantidade}x {it.nome}</li>)}
-                  </ul>
-                  <div className="font-bold text-lg mb-3">{currency(p.total)}</div>
 
-                  <div className="flex gap-2">
-                    <button onClick={() => aceitarPedido(p)} className="flex-1 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700">✅ Aceitar</button>
-                    <button onClick={() => rejeitarPedido(p)} className="py-2 px-4 bg-red-600 text-white rounded-lg hover:bg-red-700">✕</button>
-                  </div>
+        <div className="grid grid-cols-4 gap-4 flex-1 overflow-hidden">
+            
+            {/* COLUNA 1: NOVOS (WEB) */}
+            <div className="kanban-column border-t-4 border-blue-500">
+                <h2 className="kanban-header text-blue-400">📥 Chegando ({novos.length})</h2>
+                <div className="kanban-scroll space-y-3">
+                    {novos.map(p => (
+                        <div key={p.id} className="card-pedido bg-blue-900/20 border-blue-500/50">
+                            <div className="flex justify-between font-bold text-lg mb-2">
+                                <span>{p.nomeCliente}</span>
+                                <span className="bg-blue-600 text-xs px-2 py-1 rounded">WEB</span>
+                            </div>
+                            <div className="text-gray-400 text-sm mb-2">Itens: {p.itens.length}</div>
+                            <ul className="text-sm list-disc pl-4 mb-3 text-gray-300">
+                                {p.itens.map(i => (
+                                    <li key={i.id}>
+                                        {i.quantidade}x {i.nome}
+                                        {i.obs && <span className="obs-highlight">⚠️ {i.obs}</span>}
+                                    </li>
+                                ))}
+                            </ul>
+                            <div className="grid grid-cols-2 gap-2">
+                                <button onClick={() => aceitarWeb(p)} className="bg-green-600 hover:bg-green-500 py-2 rounded font-bold">Aceitar</button>
+                                <button onClick={() => rejeitarWeb(p)} className="bg-red-600 hover:bg-red-500 py-2 rounded font-bold">X</button>
+                            </div>
+                        </div>
+                    ))}
+                    {novos.length === 0 && <div className="text-center text-gray-600 mt-10">Tudo limpo</div>}
                 </div>
-              ))}
-              {pedidosWebEmFila.length === 0 && <div className="text-gray-500 text-center py-6">Nenhum novo pedido WEB</div>}
             </div>
-          </div>
 
-          {/* COLUNA 2: PENDENTES (ACEITOS) */}
-          <div className="kanban-column bg-red-700/10 border-2 border-terracota">
-            <h3 className="kanban-header text-terracota border-terracota">⏳ FILA DE PREPARO ({pedidosPendentes.length})</h3>
-            <div className="kanban-scroll space-y-4">
-              {pedidosPendentes.map(p => (
-                <div key={p.id} className="card-pedido border-2 border-terracota">
-                  <div className="card-pedido-header">
-                    <span className="card-pedido-title">{p.nomeCliente}</span>
-                    <span className={`card-pedido-tag ${p.tipo === 'Venda Direta' ? 'bg-blue-500' : 'bg-terracota'} text-white`}>{p.tipo === 'Venda Direta' ? 'PDV' : 'WEB ACEITO'}</span>
-                  </div>
-                  <div className="text-xs text-gray-400 mb-2">Inclusão: {new Date(p.data).toLocaleTimeString()}</div>
-                  <ul className="list-disc list-inside text-sm mb-3 ml-3 text-gray-300">
-                    {p.itens.map(it => <li key={it.id}>{it.quantidade}x {it.nome}</li>)}
-                  </ul>
-                  
-                  <button onClick={() => alterarStatus(p.id, 'Em Preparo')} className="w-full mt-3 py-2 bg-terracota text-white rounded-lg hover:bg-redBrown">▶ Iniciar Preparo</button>
+            {/* COLUNA 2: FILA (ACEITOS) */}
+            <div className="kanban-column border-t-4 border-yellow-500">
+                <h2 className="kanban-header text-yellow-400">⏳ Fila ({fila.length})</h2>
+                <div className="kanban-scroll space-y-3">
+                    {fila.map(p => (
+                        <div key={p.id} className={`card-pedido ${getClassSLA(p.inicioPreparo || p.data)}`}>
+                            <div className="flex justify-between font-bold text-lg mb-1">
+                                <span>{p.nomeCliente}</span>
+                                <span className="text-sm opacity-70">{getTempoDecorrido(p.inicioPreparo || p.data)}</span>
+                            </div>
+                            <div className="text-xs text-gray-400 mb-2 border-b border-gray-600 pb-1">Pedido #{String(p.id).slice(-4)}</div>
+                            <ul className="text-sm list-disc pl-4 mb-3">
+                                {p.itens.map(i => (
+                                    <li key={i.id}>
+                                        <span className="font-bold">{i.quantidade}x</span> {i.nome}
+                                        {i.obs && <span className="obs-highlight">⚠️ {i.obs}</span>}
+                                    </li>
+                                ))}
+                            </ul>
+                            <button onClick={() => moverStatus(p.id, 'Em Preparo')} className="w-full bg-yellow-600 hover:bg-yellow-500 py-2 rounded font-bold text-white">
+                                ▶ Iniciar
+                            </button>
+                        </div>
+                    ))}
                 </div>
-              ))}
-              {pedidosPendentes.length === 0 && <div className="text-gray-500 text-center py-6">Fila de preparo vazia</div>}
             </div>
-          </div>
-          
-          {/* COLUNA 3: EM PREPARO */}
-          <div className="kanban-column bg-yellow-700/10 border-2 border-yellow-500">
-            <h3 className="kanban-header text-yellow-500 border-yellow-500">🔪 EM PREPARO ({pedidosEmPreparo.length})</h3>
-            <div className="kanban-scroll space-y-4">
-              {pedidosEmPreparo.map(p => (
-                <div key={p.id} className="card-pedido border-2 border-yellow-500 bg-yellow-900/20">
-                  <div className="card-pedido-header">
-                    <span className="card-pedido-title text-yellow-400">{p.nomeCliente}</span>
-                    <span className={`card-pedido-tag ${p.tipo === 'Venda Direta' ? 'bg-blue-500' : 'bg-terracota'} text-white`}>{p.tipo === 'Venda Direta' ? 'PDV' : 'WEB'}</span>
-                  </div>
-                  <div className="text-xs text-gray-400 mb-2">Iniciado: {new Date(p.data).toLocaleTimeString()}</div>
-                  <ul className="list-disc list-inside text-sm mb-3 ml-3 text-gray-300">
-                    {p.itens.map(it => <li key={it.id}>{it.quantidade}x {it.nome}</li>)}
-                  </ul>
-                    
-                  <button 
-                    onClick={() => finalizarPedidoEGerarVenda(p)} 
-                    className="w-full mt-3 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700"
-                  >
-                    🔔 Pronto! Chamar Garçom
-                  </button>
+
+            {/* COLUNA 3: EM PREPARO */}
+            <div className="kanban-column border-t-4 border-orange-500">
+                <h2 className="kanban-header text-orange-400">🔥 Preparando ({preparo.length})</h2>
+                <div className="kanban-scroll space-y-3">
+                    {preparo.map(p => (
+                        <div key={p.id} className={`card-pedido ${getClassSLA(p.inicioPreparo || p.data)}`}>
+                            <div className="flex justify-between font-bold text-lg mb-1">
+                                <span>{p.nomeCliente}</span>
+                                <span className="text-sm opacity-70">{getTempoDecorrido(p.inicioPreparo || p.data)}</span>
+                            </div>
+                            <ul className="text-sm list-disc pl-4 mb-3">
+                                {p.itens.map(i => (
+                                    <li key={i.id} className="text-lg">
+                                        <span className="font-bold">{i.quantidade}x</span> {i.nome}
+                                        {i.obs && <span className="obs-highlight">⚠️ {i.obs}</span>}
+                                    </li>
+                                ))}
+                            </ul>
+                            <button onClick={() => moverStatus(p.id, 'Pronto')} className="w-full bg-green-600 hover:bg-green-500 py-3 rounded font-bold text-white text-lg">
+                                ✅ PRONTO
+                            </button>
+                        </div>
+                    ))}
                 </div>
-              ))}
-              {pedidosEmPreparo.length === 0 && <div className="text-gray-500 text-center py-6">Nenhum pedido em preparo</div>}
             </div>
-          </div>
-          
-          {/* COLUNA 4: PRONTO/AGUARDANDO COBRANÇA (NOVA COLUNA) */}
-          <div className="kanban-column bg-green-700/10 border-2 border-green-500">
-            <h3 className="kanban-header text-green-500 border-green-500">✅ PRONTO ({pedidosProntos.length})</h3>
-            <div className="kanban-scroll space-y-4">
-              {pedidosProntos.map(p => ( 
-                <div key={p.id} className="card-pedido opacity-90 bg-green-900/10 border-green-600">
-                  <div className="card-pedido-header">
-                      <span className="card-pedido-title text-green-500">{p.nomeCliente}</span>
-                      <span className="text-xs text-gray-400">{new Date(p.data).toLocaleTimeString()}</span>
-                  </div>
-                  <div className="font-bold text-lg text-gray-300">{currency(p.total)}</div>
-                  <ul className="list-disc list-inside text-sm mb-1 ml-3 text-gray-400">
-                    {p.itens.map(it => <li key={it.id}>{it.quantidade}x {it.nome}</li>)}
-                  </ul>
-                  <div className="w-full mt-3 py-2 bg-green-600/50 text-white rounded-lg text-center font-bold">AGUARDANDO COBRANÇA</div>
+
+            {/* COLUNA 4: PRONTOS */}
+            <div className="kanban-column border-t-4 border-green-500">
+                <h2 className="kanban-header text-green-400">🛎️ Prontos ({prontos.length})</h2>
+                <div className="kanban-scroll space-y-3">
+                    {prontos.map(p => (
+                        <div key={p.id} className="card-pedido bg-green-900/20 border-green-600/50 opacity-80 hover:opacity-100">
+                            <div className="flex justify-between font-bold text-lg mb-2">
+                                <span className="text-green-300">{p.nomeCliente}</span>
+                                <span className="text-xs border border-green-500 rounded px-2 flex items-center">Aguardando Garçom</span>
+                            </div>
+                            <ul className="text-sm list-disc pl-4 mb-3 text-gray-400">
+                                {p.itens.map(i => <li key={i.id}>{i.quantidade}x {i.nome}</li>)}
+                            </ul>
+                            <button onClick={() => moverStatus(p.id, 'Em Preparo')} className="w-full bg-gray-700 hover:bg-gray-600 py-1 rounded text-sm text-gray-300">
+                                ↩ Desfazer (Voltar p/ Preparo)
+                            </button>
+                        </div>
+                    ))}
                 </div>
-              ))}
-              {pedidosProntos.length === 0 && <div className="text-gray-500 text-center py-6">Nenhum pedido pronto</div>}
             </div>
-          </div>
-          
-          {/* COLUNA 5: FINALIZADOS/VENDIDOS (Últimos 10) - Opcional, mantida por compatibilidade */}
-          {/* Para ver os finalizados, mantenha esta coluna ou verifique no index.html (Dashboard/Caixa) */}
-          {/* Removida a coluna Finalizados para manter o layout 4-colunas-grid de fluxo */}
-          
+
         </div>
       </div>
     );
   }
 
-  ReactDOM.render(<CozinhaView />, document.getElementById('root'));
+  const root = ReactDOM.createRoot(document.getElementById('root'));
+  root.render(<CozinhaView />);
   </script>
 </body>
 </html>
