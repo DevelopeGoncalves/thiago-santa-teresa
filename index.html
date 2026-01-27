@@ -11,7 +11,7 @@
     gtag('config', 'G-C9RLS2SDCJ');
   </script>
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>PDV - Thiago Santa Teresa (Completo)</title>
+  <title>PDV - Thiago Santa Teresa (Mobile + 58mm)</title>
 
   <script src="https://cdn.tailwindcss.com"></script>
   <script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
@@ -69,7 +69,6 @@
       margin-top: 3px; letter-spacing: 1px;
     }
     
-    /* Novo Estilo para imitar o OnChef */
     .onchef-card {
         padding: 1rem;
         border-radius: 0.75rem;
@@ -84,7 +83,6 @@
     .onchef-card-title { font-size: 1.5rem; }
     .onchef-card-subtitle { font-size: 0.75rem; opacity: 0.8; }
     
-    /* Estilo para Modal */
     .modal-overlay {
         position: fixed; top: 0; left: 0; right: 0; bottom: 0;
         background-color: rgba(0, 0, 0, 0.5);
@@ -97,13 +95,27 @@
         box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
     }
 
-    /* ESTILOS DO MAPA DE MESAS */
     .mesa-card {
         aspect-ratio: 1; border-radius: 1rem; display: flex; flex-direction: column;
         align-items: center; justify-content: center; cursor: pointer;
         transition: transform 0.2s; position: relative; box-shadow: 0 4px 6px rgba(0,0,0,0.1);
     }
     
+    /* --- CONFIGURAÇÃO DE IMPRESSÃO 58MM --- */
+    @media print {
+      body * { visibility: hidden; }
+      #printable-content, #printable-content * { visibility: visible; }
+      #printable-content {
+        position: absolute; left: 0; top: 0; width: 100%; margin: 0; padding: 0;
+        width: 48mm; /* Ajuste seguro para papel 58mm */
+        font-size: 11px;
+        font-family: 'Courier New', Courier, monospace;
+        color: black;
+        background: white;
+      }
+      /* Esconde elementos de tela */
+      .no-print { display: none !important; }
+    }
   </style>
 </head>
 <body class="bg-slate-50">
@@ -114,7 +126,7 @@
   const { useState, useEffect, useMemo, useRef } = React;
 
   /*************************************************
-   * FUNÇÕES DE UTILIDADE E ARMAZENAMENTO (DESACOPLADAS)
+   * FUNÇÕES DE UTILIDADE E ARMAZENAMENTO
    *************************************************/
 
   function uid(){ return Date.now() + Math.floor(Math.random()*9999); }
@@ -146,13 +158,10 @@
     try {
       const data = localStorage.getItem(key);
       if (data === null) return fallback;
-      
       let parsedData = JSON.parse(data);
-      
       if (key === 'produtos' && parsedData) {
         parsedData = prepareFromStorage(parsedData);
       }
-      
       return parsedData;
     } catch(e){ 
       console.error('Erro ao ler localStorage:', e);
@@ -185,7 +194,6 @@
 
   function calcularCusto(item, insumosMap) {
       if (!item.fichaTecnica || item.fichaTecnica.length === 0) return 0;
-      
       let custoTotal = 0;
       item.fichaTecnica.forEach(insumoRef => {
           const insumoData = insumosMap[insumoRef.idInsumo];
@@ -441,27 +449,29 @@
   /****************
    * Header, Side
    ****************/
-  function Header({user, onLogout}){
+  function Header({user, onLogout, toggleMobile}){
     return (
-      <header className="bg-white shadow sticky top-0 z-30 h-16 flex items-center justify-between px-6 border-b">
+      <header className="bg-white shadow sticky top-0 z-30 h-16 flex items-center justify-between px-4 sm:px-6 border-b">
         <div className="flex items-center gap-4">
-            <h1 className="text-xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-terracota to-redBrown">Thiago Santa Teresa PDV</h1>
+            {/* Botão Hamburger para Mobile */}
+            <button onClick={toggleMobile} className="md:hidden text-2xl p-1 text-gray-600 focus:outline-none">
+              ☰
+            </button>
+            <h1 className="text-lg sm:text-xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-terracota to-redBrown">Thiago PDV</h1>
             <div className="text-xs text-gray-500 hidden sm:block">(Simulação LocalStorage)</div>
         </div>
 
         <div className="flex items-center gap-4 text-sm text-gray-600">
-            <div className="flex items-center gap-2">
-                <span className="text-green-500">🟢</span> Caixa Aberto (Simulação)
+            <div className="hidden sm:flex items-center gap-2">
+                <span className="text-green-500">🟢</span> Caixa Aberto
             </div>
             <div className="hidden sm:block">⏱️ 16:15</div> 
-            <div className="hidden sm:block">📅 03/12/2025</div>
-            <div className="hidden sm:block">Boa tarde</div> 
         </div>
       </header>
     );
   }
 
-  function Sidebar({selected, setSelected, totalPedidosWeb, user, onLogout}){
+  function Sidebar({selected, setSelected, totalPedidosWeb, user, onLogout, isMobile, closeMobile}){
     const itens = [
       { key:'dashboard', label:'🏠 Dashboard' },
       { key:'mapa_mesas', label:'🗺️ Mapa de Mesas' },
@@ -475,16 +485,22 @@
       { key:'avancado', label:'📈 Relatório Avançado' }
     ];
     
+    // Classes condicionais para Mobile x Desktop
+    const containerClasses = isMobile 
+        ? "w-64 bg-dark h-full shadow-2xl overflow-y-auto" 
+        : "w-64 bg-dark border-r border-cinzaEscuro hidden md:flex flex-col flex-shrink-0";
+
     return (
-      <aside className="w-64 bg-dark border-r border-cinzaEscuro hidden md:flex flex-col flex-shrink-0">
-        <div className="p-4 flex flex-col items-center justify-center border-b border-cinzaEscuro">
+      <aside className={containerClasses}>
+        <div className="p-4 flex flex-col items-center justify-center border-b border-cinzaEscuro relative">
             <div className="text-xl font-bold text-terracota">THIAGO</div>
             <div className="text-sm text-gray-400">SANTA TERESA PDV</div>
+            {isMobile && <button onClick={closeMobile} className="absolute top-2 right-2 text-white font-bold">✕</button>}
         </div>
         
         <div className="p-2 sidebar-scroll flex-1">
           {itens.map(i=>(
-            <button key={i.key} onClick={()=>setSelected(i.key)}
+            <button key={i.key} onClick={()=>{ setSelected(i.key); if(isMobile) closeMobile(); }}
               className={`flex items-center gap-3 w-full text-left px-4 py-3 rounded-lg my-1 text-md font-medium transition ${selected===i.key ? 'bg-terracota text-white shadow-lg' : 'text-gray-300 hover:bg-cinzaEscuro hover:text-white'}`}>
               <span>{i.label}</span>
             </button>
@@ -493,7 +509,7 @@
         
         <div className="p-4 border-t border-cinzaEscuro text-sm text-gray-400">
             <div className="flex items-center justify-between mb-2">
-                <div>👤 Logado como: <b className="text-terracota">{user?.username}</b></div>
+                <div>👤 Logado: <b className="text-terracota">{user?.username}</b></div>
             </div>
             <button onClick={onLogout} className="w-full py-1 rounded-lg border border-redBrown text-redBrown hover:bg-redBrown hover:text-white transition">Sair</button>
         </div>
@@ -1919,6 +1935,7 @@
   function App(){
     const [user, setUser] = useState(null);
     const [loading, setLoading] = useState(true);
+    const [mobileOpen, setMobileOpen] = useState(false); // NOVO: Controle Mobile
     
     const [produtos, setProdutos] = useState([]); 
     const [insumos, setInsumos] = useState([]); 
@@ -2085,10 +2102,12 @@
       };
       
       setCarrinho([]);
-
-      salvarPedidos([...pedidos, novoPedido]); 
+      const novosPedidos = [...pedidos, novoPedido];
+      salvarPedidos(novosPedidos);
       
-      alert(`Venda Direta registrada e pedido enviado para Cozinha! Total: ${currency(total)}`);
+      // AUTO IMPRESSÃO (Opcional - apenas sugere)
+      // window.print(); 
+      alert(`Venda registrada! Total: ${currency(total)}`);
     }
     
     function finalizarPedidoEGerarVenda(pedido) {
@@ -2109,7 +2128,7 @@
 
       salvarPedidos(pedidos.map(p => p.id === pedido.id ? { ...p, status: 'Vendido' } : p));
       
-      alert(`Venda registrada! Total: ${currency(pedido.total)} | Lucro estimado: ${currency(pedido.total - custoPedido)}`);
+      alert(`Venda registrada! Total: ${currency(pedido.total)}`);
     }
 
     const totalCarrinho = carrinho.reduce((s,i)=> s + i.preco * i.quantidade, 0);
@@ -2127,9 +2146,22 @@
 
     return (
       <div className="min-h-screen flex flex-col bg-slate-50">
-        <Header user={user} onLogout={()=>setUser(null)} />
-        <div className="flex flex-1 w-full overflow-hidden">
+        <Header user={user} onLogout={()=>setUser(null)} toggleMobile={() => setMobileOpen(true)} />
+        <div className="flex flex-1 w-full overflow-hidden relative">
+          
+          {/* Sidebar Desktop */}
           <Sidebar selected={selected} setSelected={setSelected} totalPedidosWeb={pedidosPendentesWeb.length} user={user} onLogout={()=>setUser(null)} />
+          
+          {/* Sidebar Mobile Overlay */}
+          {mobileOpen && (
+              <div className="fixed inset-0 z-50 flex md:hidden">
+                  <div className="fixed inset-0 bg-black/60 backdrop-blur-sm transition-opacity" onClick={()=>setMobileOpen(false)}></div>
+                  <div className="relative z-50 h-full animate-slideIn">
+                      <Sidebar selected={selected} setSelected={setSelected} totalPedidosWeb={pedidosPendentesWeb.length} user={user} onLogout={()=>setUser(null)} isMobile={true} closeMobile={()=>setMobileOpen(false)} />
+                  </div>
+              </div>
+          )}
+
           <main className="flex-1 overflow-y-auto app-main-content">
             
             {selected === 'dashboard' && (
@@ -2184,6 +2216,10 @@
                 salvarInsumos={salvarInsumos}
                 salvarProdutos={salvarProdutos}
               />
+            )}
+            
+             {selected === 'mapa_mesas' && (
+              <MapaMesasView pedidos={pedidos} selecionarMesa={(m) => alert("Mesa " + m)} />
             )}
 
             {selected === 'relatorios' && (
