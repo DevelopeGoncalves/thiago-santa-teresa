@@ -101,6 +101,10 @@
         transition: transform 0.2s; position: relative; box-shadow: 0 4px 6px rgba(0,0,0,0.1);
     }
     
+    .mesa-livre { background-color: #d1fae5; color: #065f46; border: 2px solid #10b981; }
+    .mesa-ocupada { background-color: #fee2e2; color: #991b1b; border: 2px solid #ef4444; }
+    .mesa-pagamento { background-color: #fef3c7; color: #92400e; border: 2px solid #f59e0b; }
+    
     /* --- CONFIGURAÇÃO DE IMPRESSÃO 58MM --- */
     @media print {
       body * { visibility: hidden; }
@@ -520,7 +524,7 @@
 
 
   /*********************
-   * NOVO: Mapa de Mesas View
+   * Mapa de Mesas View
    *********************/
   function MapaMesasView({ pedidos, selecionarMesa }) {
     // Gera mesas 1 a 12
@@ -532,7 +536,7 @@
         const pedidosMesa = pedidos.filter(p => 
             p.status !== 'Vendido' && 
             p.nomeCliente &&
-            p.nomeCliente.toLowerCase().includes(nomeMesa.toLowerCase())
+            p.nomeCliente.toLowerCase() === nomeMesa.toLowerCase()
         );
 
         const total = pedidosMesa.reduce((acc, p) => acc + p.total, 0);
@@ -566,6 +570,114 @@
                 <div className="flex items-center gap-2"><div className="w-4 h-4 bg-green-500 border-2 border-green-700 rounded-full"></div> <span className="text-sm text-gray-600">Livre</span></div>
                 <div className="flex items-center gap-2"><div className="w-4 h-4 bg-red-500 border-2 border-red-700 rounded-full"></div> <span className="text-sm text-gray-600">Ocupada</span></div>
                 <div className="flex items-center gap-2"><div className="w-4 h-4 bg-yellow-500 border-2 border-yellow-700 rounded-full"></div> <span className="text-sm text-gray-600">Pedido Pronto/Conta</span></div>
+            </div>
+        </div>
+    );
+  }
+
+  /*********************
+   * Detalhe da Mesa (NOVO)
+   *********************/
+  function DetalheMesaView({ mesa, pedidos, voltarMapa, novoPedido, fecharConta }) {
+    // Filtra apenas pedidos desta mesa que não foram finalizados (status != Vendido)
+    const pedidosMesa = pedidos.filter(p => p.nomeCliente === mesa && p.status !== 'Vendido');
+    const totalMesa = pedidosMesa.reduce((acc, p) => acc + p.total, 0);
+
+    // Agrupa itens para visualização limpa
+    const itensAgrupados = [];
+    pedidosMesa.forEach(p => {
+        p.itens.forEach(i => {
+            itensAgrupados.push({
+                ...i,
+                statusPedido: p.status,
+                horaPedido: p.data
+            });
+        });
+    });
+
+    const podeFechar = pedidosMesa.every(p => p.status === 'Pronto');
+
+    return (
+        <div className="p-6 bg-slate-50 min-h-full flex flex-col">
+            <div className="flex items-center justify-between mb-6 border-b pb-4">
+                <div className="flex items-center gap-4">
+                    <button onClick={voltarMapa} className="bg-gray-200 hover:bg-gray-300 px-4 py-2 rounded-lg font-bold text-gray-700">← Voltar</button>
+                    <h2 className="text-3xl font-extrabold text-gray-800">
+                        Detalhes: <span className="text-terracota">{mesa}</span>
+                    </h2>
+                </div>
+                <div className="text-2xl font-bold bg-white px-6 py-2 rounded-xl shadow border border-gray-200">
+                    Total: {currency(totalMesa)}
+                </div>
+            </div>
+
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 flex-1">
+                {/* Coluna da Esquerda: Itens Consumidos */}
+                <div className="lg:col-span-2 bg-white rounded-2xl shadow p-4 flex flex-col">
+                    <h3 className="text-lg font-bold mb-4 text-gray-700 border-b pb-2">Itens na Conta</h3>
+                    
+                    <div className="flex-1 overflow-y-auto space-y-3">
+                        {pedidosMesa.length === 0 ? (
+                            <div className="text-center text-gray-500 py-10 italic">Nenhum pedido feito para esta mesa ainda.</div>
+                        ) : (
+                            pedidosMesa.map(pedido => (
+                                <div key={pedido.id} className={`border rounded-lg p-3 ${pedido.status === 'Pendente' ? 'bg-red-50 border-red-200' : pedido.status === 'Em Preparo' ? 'bg-yellow-50 border-yellow-200' : 'bg-green-50 border-green-200'}`}>
+                                    <div className="flex justify-between items-center mb-2">
+                                        <span className={`text-xs font-bold uppercase px-2 py-1 rounded ${pedido.status === 'Pendente' ? 'bg-red-200 text-red-800' : pedido.status === 'Em Preparo' ? 'bg-yellow-200 text-yellow-800' : 'bg-green-200 text-green-800'}`}>
+                                            {pedido.status}
+                                        </span>
+                                        <span className="text-xs text-gray-500">{new Date(pedido.data).toLocaleTimeString()}</span>
+                                    </div>
+                                    <ul className="text-sm ml-4 list-disc space-y-1">
+                                        {pedido.itens.map((item, idx) => (
+                                            <li key={idx} className="flex justify-between">
+                                                <span>{item.quantidade}x {item.nome}</span>
+                                                <span className="font-semibold">{currency(item.preco * item.quantidade)}</span>
+                                            </li>
+                                        ))}
+                                    </ul>
+                                </div>
+                            ))
+                        )}
+                    </div>
+                </div>
+
+                {/* Coluna da Direita: Ações */}
+                <div className="space-y-4">
+                    <button 
+                        onClick={() => novoPedido(mesa)}
+                        className="w-full py-4 bg-terracota text-white rounded-xl font-bold text-lg shadow hover:bg-redBrown transition flex items-center justify-center gap-2"
+                    >
+                        ➕ Novo Pedido
+                    </button>
+
+                    <div className="bg-white rounded-2xl shadow p-4">
+                        <h4 className="font-bold text-gray-700 mb-2">Resumo</h4>
+                        <div className="flex justify-between text-sm mb-1">
+                            <span>Subtotal</span>
+                            <span>{currency(totalMesa)}</span>
+                        </div>
+                        <div className="flex justify-between text-sm mb-4">
+                            <span>Serviço (10%)</span>
+                            <span>{currency(totalMesa * 0.1)}</span>
+                        </div>
+                        <div className="flex justify-between text-xl font-bold border-t pt-2 mb-4">
+                            <span>Total Geral</span>
+                            <span>{currency(totalMesa * 1.1)}</span>
+                        </div>
+
+                        <button 
+                            onClick={() => fecharConta(mesa, pedidosMesa, totalMesa)}
+                            disabled={totalMesa === 0}
+                            className={`w-full py-3 rounded-xl font-bold text-white transition ${totalMesa > 0 ? 'bg-green-600 hover:bg-green-700' : 'bg-gray-400 cursor-not-allowed'}`}
+                        >
+                            💰 Fechar Conta
+                        </button>
+                        {!podeFechar && totalMesa > 0 && (
+                            <p className="text-xs text-red-500 text-center mt-2">Atenção: Existem pedidos pendentes na cozinha.</p>
+                        )}
+                    </div>
+                </div>
             </div>
         </div>
     );
@@ -742,7 +854,7 @@
   /*********************
    * PDV 
    *********************/
-  function PDVView({produtos, adicionarAoCarrinho, busca, setBusca, carrinho, alterarQuantidade, removerDoCarrinho, finalizarVenda, totalCarrinho}){
+  function PDVView({produtos, adicionarAoCarrinho, busca, setBusca, carrinho, alterarQuantidade, removerDoCarrinho, finalizarVenda, enviarPedidoMesa, totalCarrinho, mesaAtiva}){
     const [categoriaAtiva, setCategoriaAtiva] = useState('Todos');
 
     const categorias = useMemo(() => {
@@ -760,6 +872,11 @@
 
     return (
       <div className="space-y-4">
+        {mesaAtiva && (
+            <div className="bg-terracota text-white p-3 rounded-xl font-bold text-center text-lg shadow">
+                📝 Anotando Pedido para: {mesaAtiva}
+            </div>
+        )}
         <div className="bg-white p-4 rounded-2xl shadow space-y-4">
           <input 
             value={busca} 
@@ -840,13 +957,24 @@
                  <span>Total</span>
                  <span>{currency(totalCarrinho)}</span>
                </div>
-               <button 
-                 onClick={finalizarVenda}
-                 disabled={carrinho.length === 0}
-                 className="w-full py-3 bg-green-600 text-white rounded-xl font-bold disabled:opacity-50"
-               >
-                 Finalizar Venda
-               </button>
+               
+               {mesaAtiva ? (
+                   <button 
+                     onClick={enviarPedidoMesa}
+                     disabled={carrinho.length === 0}
+                     className="w-full py-3 bg-terracota text-white rounded-xl font-bold disabled:opacity-50 hover:bg-redBrown transition"
+                   >
+                     🚀 Enviar para {mesaAtiva}
+                   </button>
+               ) : (
+                   <button 
+                     onClick={finalizarVenda}
+                     disabled={carrinho.length === 0}
+                     className="w-full py-3 bg-green-600 text-white rounded-xl font-bold disabled:opacity-50 hover:bg-green-700 transition"
+                   >
+                     ✅ Finalizar Venda Direta
+                   </button>
+               )}
             </div>
           </div>
         </div>
@@ -947,7 +1075,7 @@
                 <div key={p.id} className="p-3 bg-white rounded-xl shadow-md border border-red-300">
                   <div className="font-bold text-lg text-red-600 flex justify-between items-center">
                     <span>{p.nomeCliente}</span>
-                    <span className="text-sm bg-red-100 text-red-700 px-2 py-0.5 rounded-full">{p.tipo === 'Venda Direta' ? 'PDV' : 'WEB ACEITO'}</span>
+                    <span className="text-sm bg-red-100 text-red-700 px-2 py-0.5 rounded-full">{p.tipo === 'Venda Direta' ? 'PDV' : p.tipo}</span>
                   </div>
                   <div className="text-xs text-gray-500 mb-2">Data: {new Date(p.data).toLocaleTimeString()}</div>
                   <ul className="list-disc list-inside text-sm mb-3 ml-3">
@@ -1947,6 +2075,7 @@
     const [carrinho, setCarrinho] = useState([]);
     const [busca, setBusca] = useState('');
     const [selected, setSelected] = useState('dashboard');
+    const [mesaAtiva, setMesaAtiva] = useState(null); // Estado para controlar qual mesa está sendo operada
     
     // ------------------------------------
     // CARREGAMENTO E SINCRONIZAÇÃO INICIAL
@@ -2061,6 +2190,7 @@
 
     function removerDoCarrinho(id){ setCarrinho(carrinho.filter(i=>i.id!==id)); }
 
+    // Finalizar Venda de Balcão (Direta)
     function finalizarVenda(){
       if(carrinho.length === 0) return alert('Carrinho vazio!');
       const total = carrinho.reduce((s,i)=> s + i.preco * i.quantidade, 0);
@@ -2096,18 +2226,115 @@
         nomeCliente: 'Venda Direta',
         itens: itensVenda,
         total: total,
-        status: 'Pendente', 
+        status: 'Vendido', // Já vai direto como vendido, mas registra.
         tipo: 'Venda Direta',
         custoVenda: custoVenda 
       };
       
+      // Cria também o registro na lista de Vendas (Financeiro)
+      const novaVenda = {
+        id: novoPedido.id,
+        data: novoPedido.data,
+        itens: novoPedido.itens,
+        total: novoPedido.total,
+        custoVenda: custoVenda, 
+        origem: 'Balcão'
+      };
+
+      salvarVendas([...vendas, novaVenda]);
       setCarrinho([]);
-      const novosPedidos = [...pedidos, novoPedido];
-      salvarPedidos(novosPedidos);
       
-      // AUTO IMPRESSÃO (Opcional - apenas sugere)
-      // window.print(); 
       alert(`Venda registrada! Total: ${currency(total)}`);
+    }
+    
+    // Novo: Enviar Pedido para Mesa (KDS)
+    function enviarPedidoMesa() {
+        if(carrinho.length === 0) return alert('Carrinho vazio!');
+        const total = carrinho.reduce((s,i)=> s + i.preco * i.quantidade, 0);
+        
+        // Verifica Estoque
+        for (const item of carrinho) {
+          const produtoEmEstoque = produtos.find(p => p.id === item.id);
+          if (produtoEmEstoque.estoque < item.quantidade) {
+              alert(`Falha no estoque: Apenas ${produtoEmEstoque.estoque.toFixed(0)} de ${item.nome} disponíveis.`);
+              return;
+          }
+        }
+
+        // Debita do Estoque
+        const novosProdutos = produtos.map(produto => {
+            const itemVendido = carrinho.find(item => item.id === produto.id);
+            if(itemVendido) return {...produto, estoque: produto.estoque - itemVendido.quantidade};
+            return produto;
+        });
+        salvarProdutos(novosProdutos);
+        
+        // Baixa Insumos
+        const custoVenda = darBaixaInsumos(carrinho, produtos, insumos, setInsumos);
+
+        const itensVenda = carrinho.map(i => ({ 
+            id: i.id, 
+            nome: i.nome, 
+            preco: i.preco, 
+            quantidade: i.quantidade,
+            custoUnitario: i.custoProduto || 0
+        }));
+
+        const novoPedido = {
+            id: uid(),
+            data: new Date().toISOString(),
+            nomeCliente: mesaAtiva, // Vínculo com a Mesa
+            itens: itensVenda,
+            total: total,
+            status: 'Pendente', // Vai para a cozinha
+            tipo: 'Mesa',
+            custoVenda: custoVenda 
+        };
+
+        const novosPedidos = [...pedidos, novoPedido];
+        salvarPedidos(novosPedidos);
+        
+        setCarrinho([]);
+        alert(`Pedido enviado para a cozinha (${mesaAtiva})!`);
+        
+        // Retorna para o detalhe da mesa
+        setSelected('detalhe_mesa');
+    }
+    
+    function fecharContaMesa(nomeMesa, pedidosDaMesa, total) {
+        if(!confirm(`Confirma o fechamento da conta de ${nomeMesa} no valor de ${currency(total)}?`)) return;
+
+        // Soma custos
+        const custoTotal = pedidosDaMesa.reduce((acc, p) => acc + (p.custoVenda || 0), 0);
+        
+        // Todos os pedidos dessa mesa viram 'Vendido' para sair do mapa/kds
+        const pedidosAtualizados = pedidos.map(p => {
+            if(p.nomeCliente === nomeMesa && p.status !== 'Vendido') {
+                return { ...p, status: 'Vendido' };
+            }
+            return p;
+        });
+        salvarPedidos(pedidosAtualizados);
+
+        // Gera registro financeiro único ou por pedido? Vamos gerar um consolidado da mesa
+        // Mas para manter rastreio, vamos adicionar cada sub-pedido como venda ou uma venda grande.
+        // Simplificação: Adiciona uma venda consolidada
+        const itensConsolidados = [];
+        pedidosDaMesa.forEach(p => itensConsolidados.push(...p.itens));
+        
+        const novaVenda = {
+            id: uid(),
+            data: new Date().toISOString(),
+            itens: itensConsolidados,
+            total: total,
+            custoVenda: custoTotal,
+            origem: `Fechamento ${nomeMesa}`
+        };
+        salvarVendas([...vendas, novaVenda]);
+        
+        alert("Conta fechada com sucesso!");
+        setMesaAtiva(null);
+        setSelected('mapa_mesas');
     }
     
     function finalizarPedidoEGerarVenda(pedido) {
@@ -2150,14 +2377,14 @@
         <div className="flex flex-1 w-full overflow-hidden relative">
           
           {/* Sidebar Desktop */}
-          <Sidebar selected={selected} setSelected={setSelected} totalPedidosWeb={pedidosPendentesWeb.length} user={user} onLogout={()=>setUser(null)} />
+          <Sidebar selected={selected} setSelected={(key) => { setSelected(key); if(key !== 'pdv' && key !== 'detalhe_mesa') setMesaAtiva(null); }} totalPedidosWeb={pedidosPendentesWeb.length} user={user} onLogout={()=>setUser(null)} />
           
           {/* Sidebar Mobile Overlay */}
           {mobileOpen && (
               <div className="fixed inset-0 z-50 flex md:hidden">
                   <div className="fixed inset-0 bg-black/60 backdrop-blur-sm transition-opacity" onClick={()=>setMobileOpen(false)}></div>
                   <div className="relative z-50 h-full animate-slideIn">
-                      <Sidebar selected={selected} setSelected={setSelected} totalPedidosWeb={pedidosPendentesWeb.length} user={user} onLogout={()=>setUser(null)} isMobile={true} closeMobile={()=>setMobileOpen(false)} />
+                      <Sidebar selected={selected} setSelected={(key) => { setSelected(key); if(key !== 'pdv' && key !== 'detalhe_mesa') setMesaAtiva(null); }} totalPedidosWeb={pedidosPendentesWeb.length} user={user} onLogout={()=>setUser(null)} isMobile={true} closeMobile={()=>setMobileOpen(false)} />
                   </div>
               </div>
           )}
@@ -2175,7 +2402,8 @@
             {selected === 'pdv' && (
               <PDVView produtos={produtos} adicionarAoCarrinho={adicionarAoCarrinho} busca={busca} setBusca={setBusca}
                      carrinho={carrinho} alterarQuantidade={alterarQuantidade} removerDoCarrinho={removerDoCarrinho}
-                     finalizarVenda={finalizarVenda} totalCarrinho={totalCarrinho} />
+                     finalizarVenda={finalizarVenda} enviarPedidoMesa={enviarPedidoMesa} totalCarrinho={totalCarrinho} 
+                     mesaAtiva={mesaAtiva} />
             )}
             
             {selected === 'caixa_contas' && (
@@ -2219,7 +2447,23 @@
             )}
             
              {selected === 'mapa_mesas' && (
-              <MapaMesasView pedidos={pedidos} selecionarMesa={(m) => alert("Mesa " + m)} />
+              <MapaMesasView 
+                pedidos={pedidos} 
+                selecionarMesa={(nomeMesa) => {
+                    setMesaAtiva(nomeMesa);
+                    setSelected('detalhe_mesa');
+                }} 
+              />
+            )}
+            
+            {selected === 'detalhe_mesa' && mesaAtiva && (
+                <DetalheMesaView 
+                    mesa={mesaAtiva} 
+                    pedidos={pedidos} 
+                    voltarMapa={() => { setMesaAtiva(null); setSelected('mapa_mesas'); }}
+                    novoPedido={() => setSelected('pdv')}
+                    fecharConta={fecharContaMesa}
+                />
             )}
 
             {selected === 'relatorios' && (
