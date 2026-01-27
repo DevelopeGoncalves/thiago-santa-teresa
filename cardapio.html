@@ -43,6 +43,7 @@
         .mesa-info {
             background: rgba(0,0,0,0.2); display: inline-block;
             padding: 5px 15px; border-radius: 20px; margin-top: 10px; font-weight: bold;
+            border: 1px solid rgba(255,255,255,0.3);
         }
 
         /* Busca e Tabs */
@@ -158,9 +159,16 @@
     <div class="modal active" id="modalIdentificacao">
         <div class="modal-content" style="text-align: center;">
             <h2 style="color: var(--terracota); margin-bottom: 15px;">Bem-vindo!</h2>
-            <p style="margin-bottom: 20px;">Para começar, identifique sua mesa.</p>
-            <input type="text" id="inputMesa" placeholder="Ex: Mesa 05 ou Seu Nome" 
-                   style="width: 100%; padding: 15px; border-radius: 10px; border: none; margin-bottom: 20px; text-align: center; font-size: 1.1rem;">
+            <p style="margin-bottom: 20px; color: #ccc;">Para iniciarmos seu atendimento, por favor identifique-se.</p>
+            
+            <label style="display:block; text-align:left; color:#888; margin-bottom:5px; font-size:0.9rem;">Número da Mesa (Ex: 5, 12)</label>
+            <input type="number" id="inputNumMesa" placeholder="00" 
+                   style="width: 100%; padding: 15px; border-radius: 10px; border: none; margin-bottom: 15px; text-align: center; font-size: 1.1rem; background:white; color:black;">
+            
+            <label style="display:block; text-align:left; color:#888; margin-bottom:5px; font-size:0.9rem;">Seu Nome (Opcional)</label>
+            <input type="text" id="inputNomeCliente" placeholder="Como podemos te chamar?" 
+                   style="width: 100%; padding: 15px; border-radius: 10px; border: none; margin-bottom: 25px; text-align: center; font-size: 1.1rem; background:white; color:black;">
+
             <button class="add-btn" onclick="salvarIdentificacao()">Confirmar e Abrir Cardápio</button>
         </div>
     </div>
@@ -274,6 +282,17 @@
             processarItens();
             renderMenu('bebidas');
             
+            // Verifica se veio mesa na URL (QR Code) ex: cardapio.html?mesa=5
+            const urlParams = new URLSearchParams(window.location.search);
+            const mesaParam = urlParams.get('mesa');
+            if(mesaParam) {
+                // Formata automaticamente para "Mesa 0X"
+                const num = parseInt(mesaParam);
+                const mesaFormatada = `Mesa ${num < 10 ? '0'+num : num}`;
+                identificacaoMesa = mesaFormatada;
+                localStorage.setItem('mesa_atual', identificacaoMesa);
+            }
+            
             if (identificacaoMesa) {
                 document.getElementById('modalIdentificacao').classList.remove('active');
                 atualizarHeaderMesa();
@@ -306,9 +325,26 @@
 
         // --- LÓGICA DE INTERFACE ---
         function salvarIdentificacao() {
-            const val = document.getElementById('inputMesa').value.trim();
-            if (!val) return showToast('Por favor, informe sua mesa ou nome.');
-            identificacaoMesa = val;
+            const numMesa = document.getElementById('inputNumMesa').value.trim();
+            const nomeCliente = document.getElementById('inputNomeCliente').value.trim();
+            
+            if (!numMesa && !nomeCliente) return showToast('Por favor, informe ao menos o número da mesa.');
+            
+            // FORMATAÇÃO AUTOMÁTICA: "Mesa 05 - João"
+            let idFinal = '';
+            
+            if (numMesa) {
+                const num = parseInt(numMesa);
+                // Garante "Mesa 05" em vez de "Mesa 5" para combinar com o Mapa
+                idFinal = `Mesa ${num < 10 ? '0'+num : num}`; 
+            }
+            
+            if (nomeCliente) {
+                if (idFinal) idFinal += ` - ${nomeCliente}`;
+                else idFinal = nomeCliente;
+            }
+
+            identificacaoMesa = idFinal;
             localStorage.setItem('mesa_atual', identificacaoMesa);
             document.getElementById('modalIdentificacao').classList.remove('active');
             atualizarHeaderMesa();
@@ -336,9 +372,8 @@
         }
 
         function chamarGarcom() {
-            if (confirm("Deseja chamar o garçom para a mesa " + identificacaoMesa + "?")) {
+            if (confirm("Deseja chamar o garçom para " + identificacaoMesa + "?")) {
                 showToast('🔔 Garçom chamado! Aguarde um instante.');
-                // Em um sistema real, enviaria para API. Aqui simulamos.
             }
         }
 
@@ -350,7 +385,6 @@
             if (filtro) {
                 lista = allItems.filter(i => i.nome.toLowerCase().includes(filtro.toLowerCase()));
             } else {
-                // Filtra pela categoria e agrupa vinhos
                 const baseIds = new Set();
                 lista = allItems.filter(i => {
                     if (i.categoria !== categoria) return false;
@@ -364,7 +398,6 @@
             }
 
             grid.innerHTML = lista.map(item => {
-                // Se for item agrupado (vinho), precisamos pegar o objeto original para renderizar o select
                 let itemRender = item;
                 let htmlControles = '';
                 
@@ -380,7 +413,7 @@
                     `;
                 }
 
-                const uniqueId = itemRender.id; // ID para capturar inputs
+                const uniqueId = itemRender.id;
 
                 return `
                 <div class="product-card">
@@ -422,8 +455,6 @@
             }
 
             const obs = document.getElementById(`obs-${id}`).value;
-            
-            // Adiciona como item novo se tiver observação diferente
             const existing = carrinho.find(i => i.id === finalId && i.obs === obs);
             
             if (existing) {
@@ -441,7 +472,6 @@
                 });
             }
             
-            // Limpar campo obs
             document.getElementById(`obs-${id}`).value = '';
             showToast(`${nome} adicionado!`);
             atualizarContador();
@@ -500,12 +530,12 @@
                 origem: 'Web'
             };
 
-            // Salva no localStorage (simulando envio para servidor)
+            // Salva no localStorage (dispara evento para cozinha.html)
             const pendentes = JSON.parse(localStorage.getItem('pedidos_web_pendentes') || '[]');
             pendentes.push(novoPedido);
             localStorage.setItem('pedidos_web_pendentes', JSON.stringify(pendentes));
 
-            // Salva histórico local para "Meus Pedidos"
+            // Salva histórico local
             const meusPedidos = JSON.parse(localStorage.getItem('meus_pedidos_local') || '[]');
             meusPedidos.push(novoPedido.id);
             localStorage.setItem('meus_pedidos_local', JSON.stringify(meusPedidos));
@@ -526,18 +556,15 @@
                 return;
             }
 
-            // Busca status em dois lugares: Pendentes e Pedidos Ativos (Cozinha)
             const webPendentes = JSON.parse(localStorage.getItem('pedidos_web_pendentes') || '[]');
             const cozinhaPedidos = JSON.parse(localStorage.getItem('pedidos') || '[]');
             
             const historico = meusIds.map(id => {
-                // Tenta achar em pendentes
                 let pedido = webPendentes.find(p => p.id === id);
                 let status = 'Aguardando Confirmação';
                 let classe = 'st-pendente';
 
                 if (!pedido) {
-                    // Tenta achar na cozinha
                     pedido = cozinhaPedidos.find(p => p.id === id);
                     if (pedido) {
                         if (pedido.status === 'Pendente') { status = 'Na Fila de Preparo'; classe = 'st-pendente'; }
@@ -547,7 +574,7 @@
                     } else {
                         status = 'Finalizado/Arquivado';
                         classe = 'st-pronto';
-                        pedido = { total: 0, itens: [] }; // Mock se não achar
+                        pedido = { total: 0, itens: [] }; 
                     }
                 }
 
