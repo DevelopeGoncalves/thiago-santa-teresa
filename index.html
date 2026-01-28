@@ -7,7 +7,6 @@
     window.dataLayer = window.dataLayer || [];
     function gtag() { dataLayer.push(arguments); }
     gtag('js', new Date());
-
     gtag('config', 'G-C9RLS2SDCJ');
   </script>
   <meta name="viewport" content="width=device-width,initial-scale=1" />
@@ -105,26 +104,31 @@
     .mesa-ocupada { background-color: #fee2e2; color: #991b1b; border: 2px solid #ef4444; }
     .mesa-pagamento { background-color: #fef3c7; color: #92400e; border: 2px solid #f59e0b; }
     
-    /* --- CONFIGURAÇÃO DE IMPRESSÃO 58MM --- */
+    /* --- CORREÇÃO DE IMPRESSÃO --- */
+    #printable-content { display: none; }
+
     @media print {
       body * { visibility: hidden; }
       #printable-content, #printable-content * { visibility: visible; }
       #printable-content {
-        position: absolute; left: 0; top: 0; width: 100%; margin: 0; padding: 0;
-        width: 48mm; /* Ajuste seguro para papel 58mm */
-        font-size: 11px;
+        display: block !important;
+        position: absolute; left: 0; top: 0; margin: 0; padding: 0;
+        width: 100%; 
+        font-size: 12px;
         font-family: 'Courier New', Courier, monospace;
         color: black;
         background: white;
+        line-height: 1.2;
       }
-      /* Esconde elementos de tela */
       .no-print { display: none !important; }
+      @page { margin: 0; size: auto; }
     }
   </style>
 </head>
 <body class="bg-slate-50">
 
   <div id="root"></div>
+  <div id="printable-content"></div>
 
   <script type="text/babel">
   const { useState, useEffect, useMemo, useRef } = React;
@@ -171,6 +175,54 @@
       console.error('Erro ao ler localStorage:', e);
       return fallback; 
     }
+  }
+
+  // --- FUNÇÃO DE IMPRESSÃO TÉRMICA (ATUALIZADA COM LIMPEZA E PAGAMENTO) ---
+  function imprimirCupom(mesa, itens, total, tipo = 'Parcial', metodo = '') {
+      const printable = document.getElementById('printable-content');
+      if(!printable) return;
+
+      const dataStr = new Date().toLocaleString('pt-BR');
+      
+      let itensHtml = itens.map(i => `
+        <tr>
+            <td style="padding: 2px 0;">${i.quantidade}x ${i.nome}</td>
+            <td style="text-align: right; white-space: nowrap;">${currency(i.preco * i.quantidade)}</td>
+        </tr>
+      `).join('');
+
+      const pagamentoHtml = metodo ? 
+        `<div style="text-align:center; margin-top:5px; font-size:12px;">Pagamento: <b>${metodo}</b></div>` : '';
+
+      printable.innerHTML = `
+        <div style="text-align:center; font-weight:bold; font-size:14px; margin-bottom:5px;">THIAGO SANTA TERESA</div>
+        <div style="text-align:center; font-size:10px;">Rua do Lazer - ES</div>
+        <div style="text-align:center; margin: 5px 0;">--------------------------------</div>
+        <div style="text-align:center; font-weight:bold; font-size:14px;">${tipo.toUpperCase()}</div>
+        <div style="display:flex; justify-content:space-between; font-size:12px; margin-top:5px;">
+             <span>${mesa}</span>
+             <span>${dataStr}</span>
+        </div>
+        <div style="text-align:center; margin: 5px 0;">--------------------------------</div>
+        <table style="width:100%; border-collapse:collapse; font-size:12px;">
+            ${itensHtml}
+        </table>
+        <div style="text-align:center; margin: 5px 0;">--------------------------------</div>
+        <div style="display:flex; justify-content:space-between; font-weight:bold; font-size:16px;">
+            <span>TOTAL:</span>
+            <span>${currency(total)}</span>
+        </div>
+        ${pagamentoHtml}
+        <div style="text-align:center; margin-top:20px; font-size:10px;">Documento sem valor fiscal</div>
+        <div style="text-align:center; margin-bottom:20px; font-size:10px;">Obrigado pela preferência!</div>
+      `;
+
+      window.print();
+      
+      // Limpeza do DOM após impressão para evitar lixo visual
+      setTimeout(() => {
+          printable.innerHTML = '';
+      }, 1000);
   }
 
   function storageSet(key, value){ 
@@ -479,8 +531,8 @@
     const itens = [
       { key:'dashboard', label:'🏠 Dashboard' },
       { key:'mapa_mesas', label:'🗺️ Mapa de Mesas' },
-      { key:'pdv', label:'🛒 PDV' },
-      { key:'caixa_contas', label:'💰 Controle de Caixa / Contas' }, 
+      { key:'pdv', label:'🛒 PDV (Balcão)' },
+      { key:'fluxo_caixa', label:'💸 Fluxo & Histórico' }, // Item Atualizado
       { key:'produtos', label:'📦 Produtos (Venda)' },
       { key:'insumos', label:'🧪 Insumos/Estoque' },
       { key:'custo_insumos', label:'📝 Relatório de Insumos' },
@@ -521,8 +573,6 @@
     );
   }
   
-
-
   /*********************
    * Mapa de Mesas View
    *********************/
@@ -576,12 +626,15 @@
   }
 
   /*********************
-   * Detalhe da Mesa (NOVO)
+   * Detalhe da Mesa (ATUALIZADO COM PAGAMENTO)
    *********************/
   function DetalheMesaView({ mesa, pedidos, voltarMapa, novoPedido, fecharConta }) {
     // Filtra apenas pedidos desta mesa que não foram finalizados (status != Vendido)
     const pedidosMesa = pedidos.filter(p => p.nomeCliente === mesa && p.status !== 'Vendido');
     const totalMesa = pedidosMesa.reduce((acc, p) => acc + p.total, 0);
+
+    // Estado para controlar o modal de pagamento
+    const [modoFechamento, setModoFechamento] = useState(false);
 
     // Agrupa itens para visualização limpa
     const itensAgrupados = [];
@@ -596,6 +649,25 @@
     });
 
     const podeFechar = pedidosMesa.every(p => p.status === 'Pronto');
+
+    // Tela de Seleção de Pagamento
+    if (modoFechamento) {
+        return (
+            <div className="p-8 flex flex-col items-center justify-center h-full bg-slate-100 min-h-[500px]">
+                <div className="bg-white p-8 rounded-2xl shadow-xl max-w-lg w-full text-center border-2 border-terracota">
+                    <h2 className="text-2xl font-bold mb-2">Fechamento: {mesa}</h2>
+                    <div className="text-4xl font-bold text-terracota mb-6">{currency(totalMesa)}</div>
+                    <p className="mb-4 text-gray-600 font-medium">Selecione a forma de pagamento:</p>
+                    <div className="grid grid-cols-1 gap-3">
+                        <button onClick={() => fecharConta(mesa, pedidosMesa, totalMesa, 'Dinheiro')} className="py-4 bg-green-600 text-white rounded-xl font-bold hover:bg-green-700 shadow-md">💵 Dinheiro</button>
+                        <button onClick={() => fecharConta(mesa, pedidosMesa, totalMesa, 'Pix')} className="py-4 bg-teal-600 text-white rounded-xl font-bold hover:bg-teal-700 shadow-md">💠 Pix</button>
+                        <button onClick={() => fecharConta(mesa, pedidosMesa, totalMesa, 'Cartão')} className="py-4 bg-blue-600 text-white rounded-xl font-bold hover:bg-blue-700 shadow-md">💳 Cartão (Débito/Crédito)</button>
+                    </div>
+                    <button onClick={() => setModoFechamento(false)} className="mt-8 text-gray-500 underline">Cancelar e Voltar</button>
+                </div>
+            </div>
+        )
+    }
 
     return (
         <div className="p-6 bg-slate-50 min-h-full flex flex-col">
@@ -650,6 +722,11 @@
                     >
                         ➕ Novo Pedido
                     </button>
+                    <button onClick={() => imprimirCupom(mesa, itensAgrupados, totalMesa)} 
+                            disabled={totalMesa===0}
+                            className="w-full py-3 bg-gray-800 text-white rounded-xl font-bold shadow hover:bg-black transition flex items-center justify-center gap-2">
+                        🖨️ Imprimir Parcial
+                    </button>
 
                     <div className="bg-white rounded-2xl shadow p-4">
                         <h4 className="font-bold text-gray-700 mb-2">Resumo</h4>
@@ -667,7 +744,7 @@
                         </div>
 
                         <button 
-                            onClick={() => fecharConta(mesa, pedidosMesa, totalMesa)}
+                            onClick={() => setModoFechamento(true)}
                             disabled={totalMesa === 0}
                             className={`w-full py-3 rounded-xl font-bold text-white transition ${totalMesa > 0 ? 'bg-green-600 hover:bg-green-700' : 'bg-gray-400 cursor-not-allowed'}`}
                         >
@@ -852,10 +929,11 @@
   }
 
   /*********************
-   * PDV 
+   * PDV (ATUALIZADO COM PAGAMENTO)
    *********************/
   function PDVView({produtos, adicionarAoCarrinho, busca, setBusca, carrinho, alterarQuantidade, removerDoCarrinho, finalizarVenda, enviarPedidoMesa, totalCarrinho, mesaAtiva}){
     const [categoriaAtiva, setCategoriaAtiva] = useState('Todos');
+    const [pagando, setPagando] = useState(false);
 
     const categorias = useMemo(() => {
       const cats = produtos.map(p => p.categoria);
@@ -869,6 +947,24 @@
       
       return matchesBusca && matchesCategoria;
     });
+
+    // Tela de Pagamento Venda Direta
+    if (pagando) {
+        return (
+            <div className="p-8 flex flex-col items-center justify-center h-full bg-slate-100">
+                <div className="bg-white p-6 rounded-xl shadow-xl w-full max-w-md text-center border-2 border-terracota">
+                    <h3 className="text-xl font-bold mb-4">Venda Balcão: {currency(totalCarrinho)}</h3>
+                    <p className="mb-4">Como o cliente vai pagar?</p>
+                    <div className="space-y-3">
+                        <button onClick={()=>finalizarVenda('Dinheiro')} className="w-full py-3 bg-green-600 text-white rounded-lg font-bold hover:bg-green-700">Dinheiro</button>
+                        <button onClick={()=>finalizarVenda('Pix')} className="w-full py-3 bg-teal-600 text-white rounded-lg font-bold hover:bg-teal-700">Pix</button>
+                        <button onClick={()=>finalizarVenda('Cartão')} className="w-full py-3 bg-blue-600 text-white rounded-lg font-bold hover:bg-blue-700">Cartão</button>
+                    </div>
+                    <button onClick={()=>setPagando(false)} className="mt-4 text-red-500 underline">Voltar</button>
+                </div>
+            </div>
+        )
+    }
 
     return (
       <div className="space-y-4">
@@ -968,7 +1064,7 @@
                    </button>
                ) : (
                    <button 
-                     onClick={finalizarVenda}
+                     onClick={()=>setPagando(true)}
                      disabled={carrinho.length === 0}
                      className="w-full py-3 bg-green-600 text-white rounded-xl font-bold disabled:opacity-50 hover:bg-green-700 transition"
                    >
@@ -1137,119 +1233,110 @@
     );
   }
 
-  function CaixaContasView({ vendas, pedidos, finalizarPedidoEGerarVenda }) {
-      const [contasEmAberto, setContasEmAberto] = useState(pedidos.filter(p => p.status !== 'Vendido'));
-      const [sangria, setSangria] = useState('');
-      const [historicoCaixa, setHistoricoCaixa] = useState(storageGet('historico_caixa', []));
-      
-      useEffect(() => {
-          setContasEmAberto(pedidos.filter(p => p.status !== 'Vendido'));
-      }, [pedidos]);
+  // --- NOVA VIEW: FLUXO DE CAIXA E HISTÓRICO ---
+  function FluxoCaixaView({ vendas, insumos, salvarInsumos }) { 
+      const [transacoes, setTransacoes] = useState(storageGet('transacoes_caixa', []));
+      const [tipoMov, setTipoMov] = useState('Sangria');
+      const [valorMov, setValorMov] = useState('');
+      const [descMov, setDescMov] = useState('');
 
-      function registrarSangria(e) {
-          e.preventDefault();
-          const valor = Number(sangria);
-          if (valor <= 0) return alert('Valor inválido.');
-
-          const novaSangria = {
-              id: uid(),
-              data: new Date().toISOString(),
-              tipo: 'Sangria',
-              valor: -valor, 
-              descricao: 'Retirada de troco/adiantamento'
-          };
+      // Combina Vendas (Entradas) + Transações Manuais
+      const timeline = useMemo(() => {
+          const listaVendas = vendas.map(v => ({
+              id: v.id, data: v.data, tipo: 'Venda',
+              descricao: v.origem + (v.metodoPagamento ? ` (${v.metodoPagamento})` : ''),
+              valor: v.total, metodo: v.metodoPagamento || 'Desconhecido', isEntrada: true
+          }));
           
-          const novoHistorico = [...historicoCaixa, novaSangria];
-          storageSet('historico_caixa', novoHistorico);
-          setHistoricoCaixa(novoHistorico);
-          setSangria('');
-          alert(`Sangria de ${currency(valor)} registrada!`);
-      }
-      
-      function fecharConta(pedido) {
-          if(pedido.status !== 'Pronto') {
-              alert("Aguarde a cozinha finalizar o pedido (status 'Pronto') antes de fechar a conta.");
-              return;
-          }
-          finalizarPedidoEGerarVenda(pedido);
-      }
+          const listaTransacoes = transacoes.map(t => ({
+              id: t.id, data: t.data, tipo: t.tipo,
+              descricao: t.descricao, valor: t.valor, metodo: 'Dinheiro', 
+              isEntrada: t.tipo === 'Suprimento'
+          }));
 
-      const totalVendasCaixa = vendas.reduce((sum, v) => sum + v.total, 0);
-      const totalSangrias = historicoCaixa.filter(h => h.tipo === 'Sangria').reduce((sum, h) => sum + h.valor, 0);
-      const saldoEstimado = totalVendasCaixa + totalSangrias;
+          return [...listaVendas, ...listaTransacoes].sort((a,b) => new Date(b.data) - new Date(a.data));
+      }, [vendas, transacoes]);
+
+      // Cálculos do Resumo (A "Surpresa")
+      const resumo = useMemo(() => {
+          let totalDinheiro = 0, totalPix = 0, totalCartao = 0, totalSangria = 0, totalSuprimento = 0;
+
+          timeline.forEach(item => {
+              if (item.tipo === 'Venda') {
+                  if (item.metodo === 'Dinheiro') totalDinheiro += item.valor;
+                  else if (item.metodo === 'Pix') totalPix += item.valor;
+                  else if (item.metodo === 'Cartão') totalCartao += item.valor;
+                  else totalDinheiro += item.valor; 
+              } else if (item.tipo === 'Sangria') {
+                  totalSangria += item.valor; totalDinheiro -= item.valor;
+              } else if (item.tipo === 'Suprimento') {
+                  totalSuprimento += item.valor; totalDinheiro += item.valor;
+              }
+          });
+          return { totalDinheiro, totalPix, totalCartao, totalSangria, totalSuprimento };
+      }, [timeline]);
+
+      function addMovimento(e) {
+          e.preventDefault();
+          if(!valorMov || !descMov) return;
+          const novo = { id: uid(), data: new Date().toISOString(), tipo: tipoMov, valor: parseFloat(valorMov), descricao: descMov };
+          const novaLista = [...transacoes, novo];
+          setTransacoes(novaLista);
+          storageSet('transacoes_caixa', novaLista);
+          setValorMov(''); setDescMov('');
+      }
 
       return (
-          <div className="p-6 bg-slate-50 min-h-full space-y-6">
-              <h2 className="text-3xl font-extrabold text-gray-800 border-b pb-2 flex items-center gap-3">
-                  <span className="text-4xl text-terracota">💰</span> Controle de Caixa & Contas
-              </h2>
-
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                  <div className="onchef-card bg-red-600/90">
-                      <div className="onchef-card-subtitle">Contas Ativas (Aguardando Preparo/Fechamento)</div>
-                      <div className="onchef-card-title">{contasEmAberto.length} Pedidos</div>
+          <div className="p-6 space-y-6">
+              <h2 className="text-3xl font-extrabold text-gray-800 border-b pb-2">💸 Fluxo de Caixa & Fechamento</h2>
+              
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                  <div className="bg-white p-4 rounded-2xl shadow border-l-4 border-green-500">
+                      <div className="text-xs font-bold text-gray-500 uppercase">Dinheiro (Gaveta)</div>
+                      <div className="text-2xl font-bold text-green-700">{currency(resumo.totalDinheiro)}</div>
                   </div>
-                  
-                  <div className="onchef-card bg-blue-600/90">
-                      <div className="onchef-card-subtitle">Receita Total de Vendas (no período)</div>
-                      <div className="onchef-card-title">{currency(totalVendasCaixa)}</div>
+                  <div className="bg-white p-4 rounded-2xl shadow border-l-4 border-teal-500">
+                      <div className="text-xs font-bold text-gray-500 uppercase">Pix</div>
+                      <div className="text-2xl font-bold text-teal-700">{currency(resumo.totalPix)}</div>
                   </div>
-                  
-                  <div className="onchef-card bg-yellow-600/90">
-                      <div className="onchef-card-subtitle">Sangrias Registradas</div>
-                      <div className="onchef-card-title">{currency(Math.abs(totalSangrias))}</div>
-                      <div className="text-right text-xs opacity-90">Saldo Estimado (Total): {currency(saldoEstimado)}</div>
+                  <div className="bg-white p-4 rounded-2xl shadow border-l-4 border-blue-500">
+                      <div className="text-xs font-bold text-gray-500 uppercase">Cartão</div>
+                      <div className="text-2xl font-bold text-blue-700">{currency(resumo.totalCartao)}</div>
+                  </div>
+                  <div className="bg-gray-100 p-4 rounded-2xl border text-center">
+                      <div className="text-sm font-bold text-gray-600">Total Geral</div>
+                      <div className="text-xl font-bold text-gray-800">{currency(resumo.totalDinheiro + resumo.totalPix + resumo.totalCartao + resumo.totalSangria - resumo.totalSuprimento)}</div>
                   </div>
               </div>
-              
+
               <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                  <div className="bg-white p-4 rounded-2xl shadow border lg:col-span-2">
-                      <h3 className="font-bold text-lg mb-4 text-terracota">Contas Abertas para Cobrança</h3>
-                      <div className="space-y-3 max-h-96 overflow-y-auto">
-                          {contasEmAberto.sort((a,b) => new Date(a.data) - new Date(b.data)).map(p => (
-                              <div key={p.id} className={`p-3 rounded-xl border ${p.status === 'Pendente' ? 'bg-red-50' : p.status === 'Em Preparo' ? 'bg-yellow-50' : p.status === 'Pronto' ? 'bg-green-100' : 'bg-green-50'}`}>
-                                  <div className="flex justify-between items-center">
-                                      <div className="font-bold text-lg">{p.nomeCliente}</div>
-                                      <div className="text-terracota font-bold">{currency(p.total)}</div>
-                                  </div>
-                                  <div className="text-sm text-gray-600">
-                                      Status: <b className={`font-semibold ${p.status === 'Pendente' ? 'text-red-500' : p.status === 'Em Preparo' ? 'text-yellow-500' : 'text-green-500'}`}>{p.status}</b> | Origem: {p.tipo}
-                                  </div>
-                                  <ul className="list-disc list-inside text-xs ml-3 mt-1 text-gray-500">
-                                      {p.itens.map(it => <li key={it.id}>{it.quantidade}x {it.nome}</li>)}
-                                  </ul>
-                                  <button onClick={() => fecharConta(p)} 
-                                      className={`w-full mt-3 py-2 text-white rounded-lg transition ${p.status === 'Pronto' ? 'bg-green-500 hover:bg-green-600' : 'bg-gray-400 cursor-not-allowed'}`}
-                                      disabled={p.status !== 'Pronto'}
-                                  >
-                                      {p.status === 'Pronto' ? '✅ Cobrar & Fechar Conta' : 'Aguardando Cozinha...'}
-                                  </button>
-                              </div>
-                          ))}
-                          {contasEmAberto.length === 0 && <div className="text-gray-500 text-center py-6">Nenhuma conta aberta.</div>}
-                      </div>
-                  </div>
-                  
-                  <div className="bg-white p-4 rounded-2xl shadow border">
-                      <h3 className="font-bold text-lg mb-4 text-red-700">Registrar Sangria (Retirada de Caixa)</h3>
-                      <form onSubmit={registrarSangria} className="space-y-3 mb-6 border-b pb-4">
-                          <input value={sangria} onChange={e => setSangria(e.target.value)} placeholder="Valor R$" type="number" step="0.01" className="w-full p-3 border rounded-xl" required />
-                          <button className="w-full py-3 bg-red-500 text-white rounded-xl font-semibold hover:bg-red-600">🔴 Registrar Sangria</button>
+                  <div className="bg-white p-5 rounded-2xl shadow h-fit">
+                      <h3 className="font-bold text-gray-700 mb-3">Registrar Movimentação</h3>
+                      <form onSubmit={addMovimento} className="space-y-3">
+                          <div className="flex gap-2">
+                              <button type="button" onClick={()=>setTipoMov('Sangria')} className={`flex-1 py-2 rounded-lg font-bold border ${tipoMov==='Sangria'?'bg-red-500 text-white':'bg-gray-100'}`}>Sangria (-)</button>
+                              <button type="button" onClick={()=>setTipoMov('Suprimento')} className={`flex-1 py-2 rounded-lg font-bold border ${tipoMov==='Suprimento'?'bg-green-500 text-white':'bg-gray-100'}`}>Suprimento (+)</button>
+                          </div>
+                          <input type="number" step="0.01" value={valorMov} onChange={e=>setValorMov(e.target.value)} placeholder="Valor (R$)" className="w-full p-3 border rounded-xl" required />
+                          <input value={descMov} onChange={e=>setDescMov(e.target.value)} placeholder="Motivo" className="w-full p-3 border rounded-xl" required />
+                          <button className="w-full py-3 bg-gray-800 text-white rounded-xl font-bold">Salvar</button>
                       </form>
-                      
-                      <h4 className="font-bold text-sm mb-3">Histórico de Movimentações</h4>
-                      <div className="space-y-2 text-sm max-h-56 overflow-y-auto">
-                          {historicoCaixa.sort((a,b) => new Date(b.data) - new Date(a.data)).slice(0, 10).map(h => (
-                              <div key={h.id} className={`flex justify-between p-2 rounded-lg ${h.tipo === 'Sangria' ? 'bg-red-100' : 'bg-green-100'}`}>
+                  </div>
+
+                  <div className="lg:col-span-2 bg-white p-5 rounded-2xl shadow">
+                      <h3 className="font-bold text-gray-700 mb-3">Histórico (Hoje)</h3>
+                      <div className="max-h-[400px] overflow-y-auto space-y-2">
+                          {timeline.map(item => (
+                              <div key={item.id} className="flex justify-between items-center p-3 border rounded-lg hover:bg-gray-50">
                                   <div>
-                                      {h.tipo} - <span className="text-xs text-gray-500">{new Date(h.data).toLocaleTimeString()}</span>
+                                      <div className="font-bold text-gray-800">{item.descricao}</div>
+                                      <div className="text-xs text-gray-500">{new Date(item.data).toLocaleTimeString()} • {item.tipo}</div>
                                   </div>
-                                  <div className={`font-bold ${h.valor < 0 ? 'text-red-700' : 'text-green-700'}`}>
-                                      {currency(Math.abs(h.valor))}
+                                  <div className={`font-bold ${item.isEntrada ? 'text-green-600' : 'text-red-600'}`}>
+                                      {item.isEntrada ? '+' : '-'}{currency(item.valor)}
                                   </div>
                               </div>
                           ))}
-                          {historicoCaixa.length === 0 && <div className="text-gray-500 text-center py-2">Nenhum registro.</div>}
                       </div>
                   </div>
               </div>
@@ -2150,6 +2237,39 @@
             storageSet('pedidos', pedidos);
         } 
     }, [pedidos, loading]);
+
+    // --- SYNC AUTOMÁTICO COM CARDÁPIO DIGITAL ---
+    useEffect(() => {
+        const interval = setInterval(() => {
+            const pendentesRaw = localStorage.getItem('pedidos_web_pendentes');
+            if (!pendentesRaw) return;
+            const pendentes = JSON.parse(pendentesRaw);
+            
+            const pedidosMesa = pendentes.filter(p => p.nomeCliente && p.nomeCliente.startsWith('Mesa'));
+            
+            if (pedidosMesa.length > 0) {
+                const novosPedidosAtivos = pedidosMesa.map(p => ({
+                    id: p.id || uid(),
+                    data: p.data || new Date().toISOString(),
+                    nomeCliente: p.nomeCliente,
+                    itens: p.itens,
+                    total: p.total,
+                    status: 'Pendente', 
+                    tipo: 'Mesa (QR)',
+                    custoVenda: 0 
+                }));
+
+                const updatedPedidos = [...storageGet('pedidos', []), ...novosPedidosAtivos];
+                setPedidos(updatedPedidos);
+                storageSet('pedidos', updatedPedidos);
+
+                const restantes = pendentes.filter(p => !p.nomeCliente.startsWith('Mesa'));
+                localStorage.setItem('pedidos_web_pendentes', JSON.stringify(restantes));
+            }
+        }, 3000); 
+
+        return () => clearInterval(interval);
+    }, [pedidos]); 
     
     // ------------------------------------
     // FLUXO PDV
@@ -2190,8 +2310,8 @@
 
     function removerDoCarrinho(id){ setCarrinho(carrinho.filter(i=>i.id!==id)); }
 
-    // Finalizar Venda de Balcão (Direta)
-    function finalizarVenda(){
+    // Finalizar Venda de Balcão (Direta) - ATUALIZADO
+    function finalizarVenda(metodoPagamento = 'Dinheiro'){
       if(carrinho.length === 0) return alert('Carrinho vazio!');
       const total = carrinho.reduce((s,i)=> s + i.preco * i.quantidade, 0);
       
@@ -2220,31 +2340,35 @@
             custoUnitario: i.custoProduto || 0
       }));
 
+      // Cria pedido para registro
       const novoPedido = {
         id: uid(),
         data: new Date().toISOString(),
         nomeCliente: 'Venda Direta',
         itens: itensVenda,
         total: total,
-        status: 'Vendido', // Já vai direto como vendido, mas registra.
+        status: 'Vendido',
         tipo: 'Venda Direta',
         custoVenda: custoVenda 
       };
       
-      // Cria também o registro na lista de Vendas (Financeiro)
+      // Cria registro financeiro com Metodo de Pagamento
       const novaVenda = {
         id: novoPedido.id,
         data: novoPedido.data,
         itens: novoPedido.itens,
         total: novoPedido.total,
         custoVenda: custoVenda, 
-        origem: 'Balcão'
+        origem: 'Balcão',
+        metodoPagamento: metodoPagamento // NOVO
       };
 
       salvarVendas([...vendas, novaVenda]);
       setCarrinho([]);
       
-      alert(`Venda registrada! Total: ${currency(total)}`);
+      alert(`Venda registrada! Pagamento: ${metodoPagamento}`);
+      // Opcional: imprimir cupom automaticamente
+      imprimirCupom('Venda Balcão', itensVenda, total, 'CUPOM FISCAL', metodoPagamento);
     }
     
     // Novo: Enviar Pedido para Mesa (KDS)
@@ -2301,13 +2425,14 @@
         setSelected('detalhe_mesa');
     }
     
-    function fecharContaMesa(nomeMesa, pedidosDaMesa, total) {
-        if(!confirm(`Confirma o fechamento da conta de ${nomeMesa} no valor de ${currency(total)}?`)) return;
+    // Fechar conta mesa ATUALIZADO
+    function fecharContaMesa(nomeMesa, pedidosDaMesa, total, metodoPagamento = 'Dinheiro') {
+        if(!confirm(`Confirma fechamento de ${nomeMesa} via ${metodoPagamento}?`)) return;
 
         // Soma custos
         const custoTotal = pedidosDaMesa.reduce((acc, p) => acc + (p.custoVenda || 0), 0);
         
-        // Todos os pedidos dessa mesa viram 'Vendido' para sair do mapa/kds
+        // Todos os pedidos dessa mesa viram 'Vendido'
         const pedidosAtualizados = pedidos.map(p => {
             if(p.nomeCliente === nomeMesa && p.status !== 'Vendido') {
                 return { ...p, status: 'Vendido' };
@@ -2316,9 +2441,7 @@
         });
         salvarPedidos(pedidosAtualizados);
 
-        // Gera registro financeiro único ou por pedido? Vamos gerar um consolidado da mesa
-        // Mas para manter rastreio, vamos adicionar cada sub-pedido como venda ou uma venda grande.
-        // Simplificação: Adiciona uma venda consolidada
+        // Consolida itens para o recibo
         const itensConsolidados = [];
         pedidosDaMesa.forEach(p => itensConsolidados.push(...p.itens));
         
@@ -2328,10 +2451,14 @@
             itens: itensConsolidados,
             total: total,
             custoVenda: custoTotal,
-            origem: `Fechamento ${nomeMesa}`
+            origem: `Fechamento ${nomeMesa}`,
+            metodoPagamento: metodoPagamento // NOVO
         };
         salvarVendas([...vendas, novaVenda]);
         
+        // Imprime o cupom de fechamento com o método de pagamento
+        imprimirCupom(nomeMesa, itensConsolidados, total, 'FECHAMENTO', metodoPagamento);
+
         alert("Conta fechada com sucesso!");
         setMesaAtiva(null);
         setSelected('mapa_mesas');
@@ -2348,14 +2475,15 @@
         itens: pedido.itens.map(i => ({...i, custoUnitario: i.custoUnitario || 0})),
         total: pedido.total,
         custoVenda: custoPedido, 
-        origem: `Pedido - ${pedido.nomeCliente}`
+        origem: `Pedido - ${pedido.nomeCliente}`,
+        metodoPagamento: 'Dinheiro' // Padrão para pedidos avulsos da cozinha se não passar pelo caixa
       };
       
       salvarVendas([...vendas, novaVenda]);
 
       salvarPedidos(pedidos.map(p => p.id === pedido.id ? { ...p, status: 'Vendido' } : p));
       
-      alert(`Venda registrada! Total: ${currency(pedido.total)}`);
+      alert(`Venda registrada!`);
     }
 
     const totalCarrinho = carrinho.reduce((s,i)=> s + i.preco * i.quantidade, 0);
@@ -2406,11 +2534,12 @@
                      mesaAtiva={mesaAtiva} />
             )}
             
-            {selected === 'caixa_contas' && (
-              <CaixaContasView 
+            {/* SUBSTITUIÇÃO: Fluxo de Caixa no lugar do antigo CaixaContas */}
+            {selected === 'fluxo_caixa' && (
+              <FluxoCaixaView 
                 vendas={vendas}
-                pedidos={pedidos}
-                finalizarPedidoEGerarVenda={finalizarPedidoEGerarVenda}
+                insumos={insumos}
+                salvarInsumos={salvarInsumos}
               />
             )}
 
